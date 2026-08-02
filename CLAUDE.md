@@ -2,27 +2,40 @@
 
 ## How to use this file
 
-Sections below are marked with an **Applies if:** gate. When seeding a new
-project, walk the checklist once and **delete every section whose gate is
-false** — a rule that doesn't apply is worse than no rule, because it trains
-the reader to skim past gates.
+GameWiki is a **Python web app, run under Docker Compose**, serving wiki pages
+that document information about games. Pages are user-authored and DB-backed.
 
-**Setup checklist — resolve these before the first commit:**
+The setup checklist has been walked and every **Applies if:** gate resolved for
+this project. Sections whose gate was false are deleted, not left in place — a
+rule that doesn't apply is worse than no rule, because it trains the reader to
+skim past gates. **If a future section is added, gate it the same way.**
 
-- [x] Replace `<PROJECT>` with the project name.
-- [ ] Pick the **version home**: a dedicated version module, a package manifest
-      (`package.json` / `pyproject.toml` / `Cargo.toml`), or — for single-file
-      projects — a constant at the top of the script itself. Record it below.
-- [ ] Decide whether there's a `CHANGELOG.md` or an in-file changelog block.
-- [ ] Delete inapplicable sections: **UI touch targets** (no UI), **containerized
-      dev loop** (not containerized), **Docker Compose services** (no Compose),
-      **integration tests** (no network surface), **docs index** (no docs
-      directory), **license perimeter** (no redistributed third-party data).
-- [ ] Fill in the real commands: rebuild, test, lint.
+**Resolved project facts:**
+
+| Fact | Value |
+|---|---|
+| Version home | `app/version.py` — `APP_VERSION`, `APP_VERSION_NAME`, `SCHEMA_VERSION` |
+| Changelog | Standalone `CHANGELOG.md` at the repo root |
+| Rebuild | `docker compose up -d --build app` |
+| Test | `docker compose exec app pytest -q` |
+| Lint | `docker compose exec app ruff check .` and `ruff format --check .` |
+
+*The three commands above are the project's intended conventions, fixed here
+before the scaffold exists. The first commit that lands `docker-compose.yml` /
+`pyproject.toml` must make them true — or update this table.*
+
+**Deleted as not applicable:** the single-file-project version provision (this is
+a multi-file app) and the license-perimeter section (GameWiki hosts
+user-authored pages; it does not redistribute third-party licensed game
+datasets). *If GameWiki ever ingests a licensed dataset — IGDB, MobyGames, a
+wiki dump — restore the license-perimeter rules before the data lands.*
+
+**Not yet built:** there is no `docs/` index page yet. The first commit that adds
+a reader-facing doc must create the index in the same commit and backfill rows
+for the existing repo-root docs, per the docs-index rule below.
 
 Rules with no gate — versioning discipline, commit/push discipline, the
-changelog format, and the multiple-choice convention — apply to **every**
-project regardless of stack.
+changelog format, and the multiple-choice convention — apply regardless of stack.
 
 ---
 
@@ -41,70 +54,20 @@ full at the start of any version-related work.
 
 ### Where the version lives
 
-**Exactly one location is the single source of truth. Do not edit version
-numbers anywhere else.** Pick the row that matches this project and delete the
-others:
-
-| Project shape | Version home | Notes |
-|---|---|---|
-| Multi-file app | `<path/to/version file>` (e.g. `app/version.py`, `src/version.ts`) | A dedicated module read by the app at runtime. |
-| Packaged library | The package manifest (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod` tag) | The manifest is authoritative; don't duplicate into a constant. |
-| **Single-file script / tool** | **A constant in the file's own header** | See the single-file provision below. |
-
-### Single-file projects keep the version *in* the file
-
-**Applies if:** the project is one script, one notebook, or a handful of
-standalone tools with no shared version module.
-
-A single-file tool must not grow a second file just to hold a version string.
-Instead, the version constant lives in the script's own header, immediately
-below the shebang/docstring, and is the single source of truth:
+**`app/version.py` is the single source of truth. Do not edit version numbers
+anywhere else.** It is a dedicated module read by the app at runtime:
 
 ```python
-#!/usr/bin/env python3
-"""<tool> — one-line description."""
+"""GameWiki version constants — the single source of truth."""
 
-__version__ = "1.4.2"
-__version_name__ = "The Quiet Reactor"
+APP_VERSION = "0.1.0"
+APP_VERSION_NAME = "The Empty Codex"
+SCHEMA_VERSION = 0
 ```
 
-
-```bash
-#!/usr/bin/env bash
-# <tool> — one-line description.
-readonly VERSION="1.4.2"
-readonly VERSION_NAME="The Quiet Reactor"
-```
-
-Rules for single-file projects:
-
-- **The constant is still bumped on every commit** — the per-commit bump rule is
-  not relaxed for small tools. A one-line fix to a script is still a PATCH bump.
-- **Expose it.** The script must support `--version` (or equivalent) printing
-  `<name> <version> — "<Fun Name>"`, so a running copy can be identified without
-  reading the source. If the script has no CLI surface, print it under a
-  `--help`/verbose banner instead.
-- **If there's no `CHANGELOG.md`, the changelog lives in the file header** as a
-  comment block directly under the version constant, newest entry first, using
-  the same format as a standalone changelog (see below) but compressed to one
-  line per change:
-
-  ```python
-  # Changelog
-  # 1.4.2 - 2026-07-31 - "The Quiet Reactor"
-  #   Fixed: retry loop no longer spins on a 429 without backoff.
-  # 1.4.1 - 2026-07-28 - "Paper Lantern"
-  #   Changed: default timeout 30s -> 10s.
-  ```
-
-- **Promote to a real `CHANGELOG.md`** once the in-file block passes roughly 50
-  lines or the project gains a second file — at that point move the whole block
-  out verbatim and switch to the standard format. Leave the version constant
-  where it is; only the changelog moves.
-- **When several standalone scripts live in one repo, each versions
-  independently.** Don't invent a repo-wide version for a folder of unrelated
-  tools. The commit subject names which tool bumped:
-  `<tool>: X.Y.Z — "Fun Name" — <summary>`.
+Nothing else — not `pyproject.toml`, not a Dockerfile label, not a template —
+carries a hardcoded version string. Anything that needs the version imports it
+from here.
 
 ### Bump rules
 
@@ -121,14 +84,15 @@ Rules for single-file projects:
   (Same — replaces the PATCH bump for that release. **Also triggers the
   changelog-archive rule below.**)
 
-**Applies if the project has DB migrations:** a `SCHEMA_VERSION` constant lives
-alongside `APP_VERSION` and increments by **+1** for every migration added.
-*Delete this rule if there's no schema.*
+`SCHEMA_VERSION` lives alongside `APP_VERSION` and increments by **+1** for every
+migration added. It moves independently of the semver bump — a MINOR feature
+release that adds one migration bumps `APP_VERSION` MINOR and `SCHEMA_VERSION`
+by one.
 
 ### Changelog entry format
 
-- Add a new `## [X.Y.Z] - YYYY-MM-DD — "Fun Name"` section at the **top** of the
-  changelog (below the instructions header). Use today's UTC date.
+- Add a new `## [X.Y.Z] - YYYY-MM-DD — "Fun Name"` section at the **top** of
+  `CHANGELOG.md` (below the instructions header). Use today's UTC date.
 - **The "Fun Name" is required** — a short, evocative title (1-4 words, Title
   Case, in straight double quotes) capturing the spirit of the release. Prefer a
   flavorful noun phrase ("The Quiet Reactor", "Glass Houses") over a literal
@@ -137,11 +101,11 @@ alongside `APP_VERSION` and increments by **+1** for every migration added.
   `**Description:**`, and at least one categorised change list (`### Added`,
   `### Changed`, `### Fixed`, `### Removed`, `### Security`, etc.).
 - **Applies if the README carries a version badge:** update the badge in the
-  first paragraph of `README.md` to match.
-- **Applies if the app displays its version in-UI:** a `APP_VERSION_NAME`
-  constant holds the current release's Fun Name and feeds the version stamp.
-  Bump it every release — it must match the top changelog entry's fun name and
-  the git subject.
+  first paragraph of `README.md` to match. *(No README exists yet — if one is
+  added with a badge, this gate goes live.)*
+- `APP_VERSION_NAME` holds the current release's Fun Name and feeds the in-UI
+  version stamp. Bump it every release — it must match the top changelog entry's
+  fun name and the git subject.
 
 ### Always create the git commit at the end of the change
 
@@ -171,7 +135,7 @@ failure: collaborators see a stale tip, CI doesn't run, and a machine crash or
 `git reset --hard` loses all of them at once.
 
 ```bash
-git push origin <branch>
+git push origin main
 ```
 
 Do this for **every** commit, including doc-only bumps: every bump → one commit →
@@ -186,10 +150,6 @@ work and is one of the few git operations that's genuinely unrecoverable for
 them. The user must explicitly authorize force-push for it to happen.
 
 ### On MAJOR version bumps, archive the prior changelog
-
-**Applies if:** the project has a standalone `CHANGELOG.md`. *(Single-file
-projects with an in-file changelog instead truncate the header block to the
-current major and move older entries to `CHANGELOG_v<N>.md`.)*
 
 When `APP_VERSION`'s MAJOR segment increments (e.g. `1.x.x` → `2.0.0`):
 
@@ -207,15 +167,14 @@ When `APP_VERSION`'s MAJOR segment increments (e.g. `1.x.x` → `2.0.0`):
 
 ## Rebuild the running app after every version bump
 
-**Applies if:** the app runs as a long-lived process or container that bakes code
-at build/start time (no live reload). *If the project is a script invoked fresh
-each run, or has live reload, delete this section.*
+GameWiki runs as a long-lived Compose container that bakes code at build time —
+there is no live reload in the committed configuration.
 
 A commit that bumps `APP_VERSION` does **not** propagate to the running instance
 automatically. After committing, rebuild:
 
 ```bash
-<rebuild command, e.g. docker compose up -d --build app>
+docker compose up -d --build app
 ```
 
 then poll the app's version/health endpoint until it reports the new
@@ -229,28 +188,28 @@ Why this matters:
   rebuild, so post-bump test runs against a stale process can mask real failures
   or surface spurious ones.
 - Manual click-through verification needs the new code running too.
-- Migrations typically run only at process start. A schema bump that isn't
+- Migrations run only at process start. A `SCHEMA_VERSION` bump that isn't
   restarted leaves the DB un-migrated even though the code thinks it's applied.
 
 If the rebuild fails (port in use, dependency unhealthy, image build error),
 investigate before retrying. **Never reach for destructive workarounds that wipe
-persistent volumes or databases** to get past a startup error. Stop the service,
-fix the root cause, then re-run the rebuild.
+persistent volumes or databases** to get past a startup error — that is page
+content, and it is not recoverable. Stop the service, fix the root cause, then
+re-run the rebuild.
 
 ---
 
 ## Touch targets must meet Apple's 44×44pt minimum
 
-**Applies if:** the project has a graphical/web UI. *Delete for CLI-only,
-library, or backend-only projects.*
+GameWiki serves a browser UI, so this applies to every template and stylesheet.
 
 All interactive elements (buttons, links, inputs, selects) must have a minimum
 tap target of **44×44 px**.
 
 - Never create a button or interactive element with a combined height (padding +
   line-height) below 44 px unless it is inside a deliberately compact panel
-  (dense row-based UI). In those cases use a minimum of **32 px** and add a code
-  comment explaining the exception.
+  (dense row-based UI — e.g. a page-history or revision list). In those cases use
+  a minimum of **32 px** and add a code comment explaining the exception.
 - The global `button` rule in the base stylesheet already sets
   `min-height: 44px; display: inline-flex; align-items: center;
   justify-content: center;` — do not remove these.
@@ -267,10 +226,8 @@ tap target of **44×44 px**.
 
 ## Every new endpoint commit lands an integration test
 
-**Applies if:** the project exposes a network surface (HTTP endpoints, RPC
-methods, websocket/event payloads). *For a library, substitute "public function"
-for "endpoint" and keep the rest. For a single-file script, substitute "CLI flag
-or subcommand" and assert on exit code + stdout shape.*
+GameWiki exposes an HTTP surface (page CRUD, search, revisions), so contract
+regressions are the main failure mode the suite guards.
 
 The integration test suite is the safety net for contract regressions. **Every
 commit that adds an endpoint or changes a message/event payload shape MUST also
@@ -279,17 +236,17 @@ are exempt.
 
 **The test contract per surface:**
 
-- One happy-path test asserting on (a) status/exit code, (b) the response body
-  shape, and (c) any resulting event/broadcast type plus the fields the client
-  actually reads.
+- One happy-path test asserting on (a) status code, (b) the response body shape,
+  and (c) any resulting event/broadcast type plus the fields the client actually
+  reads.
 - At least one error-path test (400 missing fields, 401/403 unauthorized, 404
-  unknown resource, or a contract-specific 409) — pick what's most likely to
-  regress.
-- Never hardcode resource IDs. Look resources up through the API by a stable
-  natural key (name, slug) so the test survives a reseed.
+  unknown resource, or a contract-specific 409 — e.g. an edit conflict on a page
+  revision) — pick what's most likely to regress.
+- Never hardcode resource IDs. Look pages up through the API by a stable natural
+  key (title, slug) so the test survives a reseed.
 
-**Where it lives:** one file per surface, named `tests/<suite>/test_<name>.py`
-(or the project's equivalent). Follow the shape of the existing canonical test.
+**Where it lives:** one file per surface, named `tests/<suite>/test_<name>.py`.
+Follow the shape of the existing canonical test.
 
 **When the suite can't cover it yet:** if the happy path needs fixture state that
 doesn't exist, file the happy-path test as a to-do and ship the **error-path
@@ -298,7 +255,9 @@ needing that state.
 
 **CI** runs the suite on push and PR — keep it green. If CI is ever set to manual
 dispatch, say so explicitly here, because it means the branch has **no automatic
-regression gate** and someone must fire it by hand.
+regression gate** and someone must fire it by hand. *(No CI workflow exists yet —
+the commit that adds one must update this paragraph to state which trigger it
+uses.)*
 
 **Applies if the project maintains a coverage index:** every test change — add,
 remove, rename, or material assertion shift — also updates the coverage doc in
@@ -307,9 +266,6 @@ the same commit, including the total-test-count line at the top.
 ---
 
 ## Every doc must be surfaced through the docs index
-
-**Applies if:** the project has a `docs/` directory or more than ~3 reader-facing
-documents. *A single-file tool with a README needs none of this — delete it.*
 
 The docs index is the single discovery surface for every reader-facing document —
 operator guides, how-tos, design plans, reference cards, repo-root docs. When you
@@ -337,9 +293,11 @@ column — `✅ shipped`, `🟠 partial`, `⚪ proposed`, `⚪ design only` — 
 it as the underlying work moves through phases.
 
 **When NOT to apply.** Files that aren't reader-facing documents: tests, source
-code, config, asset files, data/content files. Rule of thumb: "would a
-contributor want to find this from the docs landing page?" If yes, surface it. If
-no, skip it. If unsure, ask.
+code, config, asset files, data/content files. Note the distinction for this
+project: **wiki page content is data, not documentation** — pages authored in
+GameWiki are never indexed here. Rule of thumb: "would a contributor want to find
+this from the docs landing page?" If yes, surface it. If no, skip it. If unsure,
+ask.
 
 ---
 
@@ -391,11 +349,8 @@ is the anti-pattern — it makes the user do transcription work.
 
 ## Third-party APIs must be Docker Compose services
 
-**Applies if:** the project already uses Docker Compose for local development.
-*If it doesn't, delete this section — do not adopt Compose solely to satisfy this
-rule. The transferable principle, which you may keep as a one-liner instead: pin
-external dependencies behind a configurable base URL read from the environment,
-never a hardcoded public endpoint.*
+GameWiki already uses Docker Compose for local development, so this applies to
+every external dependency.
 
 When integrating any external API or data service, add it as a named service in
 `docker-compose.yml` rather than calling a public endpoint directly at request
@@ -415,25 +370,3 @@ and removes runtime internet calls from the hot path.
    _MY_API_BASE = os.getenv("MY_API_BASE_URL", "https://api.example.com/v1").rstrip("/")
    ```
 5. Use that variable everywhere instead of a hardcoded URL.
-
----
-
-## Shipped content stays inside the license perimeter
-
-**Applies if:** the project redistributes third-party licensed data (reference
-datasets, game content, dictionaries, map tiles). *Delete otherwise.*
-
-Shipped content carries **only** material inside the project's stated license
-perimeter. Anything outside it belongs in a user/operator-supplied override tier
-that is never part of the image.
-
-- **Shipped tier** — checked into the repo, loaded as global scope. Every record
-  carries `source`, `scope`, and an `_attribution` field naming the license.
-- **Override tier** — a user-supplied data directory (env-var configurable) plus
-  per-tenant DB content. This is the sanctioned home for out-of-perimeter
-  material; it overrides the shipped tier and is never baked into the image.
-
-Enforce the boundary with a provenance test asserting every shipped record has
-the required fields and that no override-sourced record leaks into the shipped
-tree. Add a **completeness floor** test (per-type record counts can only grow) so
-a destructive content regen can't silently drop records.
