@@ -1,0 +1,42 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Every external dependency is reached through an internal Compose URL,
+      # never a hardcoded public endpoint. See CLAUDE.md.
+      DATABASE_URL: postgresql://gamewiki:gamewiki@db:5432/gamewiki
+      GAMEWIKI_BASE_URL: http://localhost:8000
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://localhost:8000/health")
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gamewiki
+      POSTGRES_PASSWORD: gamewiki
+      POSTGRES_DB: gamewiki
+    volumes:
+      # Named volume — holds page content once the schema lands. Never wipe it
+      # to get past a startup error.
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gamewiki -d gamewiki"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  pgdata:

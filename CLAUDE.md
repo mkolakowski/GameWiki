@@ -20,9 +20,8 @@ skim past gates. **If a future section is added, gate it the same way.**
 | Test | `docker compose exec app pytest -q` |
 | Lint | `docker compose exec app ruff check .` and `ruff format --check .` |
 
-*The three commands above are the project's intended conventions, fixed here
-before the scaffold exists. The first commit that lands `docker-compose.yml` /
-`pyproject.toml` must make them true — or update this table.*
+*All three commands are live and verified against the scaffold. Keep this table
+true — if a command changes, it changes here in the same commit.*
 
 **Deleted as not applicable:** the single-file-project version provision (this is
 a multi-file app) and the license-perimeter section (GameWiki hosts
@@ -177,8 +176,14 @@ automatically. After committing, rebuild:
 docker compose up -d --build app
 ```
 
-then poll the app's version/health endpoint until it reports the new
-`APP_VERSION`. This applies to **every** version bump — including doc-only
+then poll `GET /health` until it reports the new `APP_VERSION`:
+
+```bash
+curl -s http://localhost:8000/health
+# {"status":"ok","version":"...","version_name":"...","schema_version":0}
+```
+
+This applies to **every** version bump — including doc-only
 commits where no source code changed, because the version file itself did and the
 endpoint would otherwise report a stale value.
 
