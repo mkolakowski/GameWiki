@@ -110,6 +110,18 @@ def upsert_user(
         ).fetchone()
 
 
+def get_user(user_id: int) -> dict | None:
+    """The current state of an account, or None if it no longer exists.
+
+    Read on every authenticated request so authorization decisions use the
+    role as it is now rather than as it was at sign-in.
+    """
+    with pool.connection() as conn:
+        return conn.execute(
+            f"SELECT {RETURNING_USER} FROM users WHERE id = %s", (user_id,)
+        ).fetchone()
+
+
 ROLES = ("reader", "editor", "admin")
 
 

@@ -134,7 +134,7 @@ def test_promoting_a_reader_to_editor(admin, reader, reader_name, form_post):
     assert _role_of(admin, target) == "editor"
 
 
-def test_a_promotion_takes_effect_on_the_next_sign_in(admin, sign_in_as, form_post):
+def test_a_promotion_survives_the_next_sign_in(admin, sign_in_as, form_post):
     promo_name = f"Promo Target {uuid4().hex[:8]}"
     subject = f"google-oauth2|promo-{uuid4().hex[:8]}"
     email = f"promo-{uuid4().hex[:8]}@nope.example"
@@ -149,9 +149,10 @@ def test_a_promotion_takes_effect_on_the_next_sign_in(admin, sign_in_as, form_po
         token_from="/admin/users",
     )
 
-    # Two things are under test. The old session still carries the old role, so
-    # a fresh sign-in is needed; and that sign-in must not let the allowlist
-    # undo the promotion, since this address is not on it.
+    # The promotion applies to the existing session immediately (see
+    # tests/api/test_live_roles.py). What this one guards is the other half:
+    # signing in again must not let the allowlist undo it, since this address
+    # is not on the allowlist and role_source is 'manual'.
     after = sign_in_as(subject, email, promo_name)
     response = after.post("/pages", json={"slug": f"p-{uuid4().hex[:8]}", "title": "x"})
     assert response.status_code == 201

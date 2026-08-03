@@ -1,6 +1,6 @@
 # GameWiki
 
-![version](https://img.shields.io/badge/version-0.12.0-blue) ![schema](https://img.shields.io/badge/schema-7-informational)
+![version](https://img.shields.io/badge/version-0.13.0-blue) ![schema](https://img.shields.io/badge/schema-7-informational)
 
 A small, self-hosted wiki for documenting games — pages you write, versioned,
 cross-linked, and searchable. Python and FastAPI on Postgres, run under Docker
@@ -25,7 +25,7 @@ production, point `OIDC_DISCOVERY_URL` at a real provider; it defaults to
 Google.
 
 ```bash
-docker compose exec app pytest -q          # 186 tests
+docker compose exec app pytest -q          # 193 tests
 docker compose exec app ruff check .
 python3 scripts/check_release.py           # version/changelog/schema consistency
 ```

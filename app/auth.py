@@ -92,9 +92,39 @@ def email_is_allowed(email: str | None) -> bool:
     return email in ALLOWED_EMAILS or email.rpartition("@")[2] in ALLOWED_DOMAINS
 
 
+def _load_user(request: Request) -> dict | None:
+    """Re-read the session's account from the database.
+
+    The session carries an id; everything that gates a decision or gets
+    displayed — role, name, email — comes from the row, so a change made in
+    the admin screen or directly in SQL takes effect on the account's very next
+    request instead of at its next sign-in.
+
+    An account that has gone missing invalidates the session rather than
+    falling back to the snapshot: "this user no longer exists" should never
+    resolve to "use their old permissions".
+    """
+    session_user = request.session.get("user")
+    if session_user is None or "id" not in session_user:
+        return None
+
+    row = repo.get_user(session_user["id"])
+    if row is None:
+        return None
+
+    return {"id": row["id"], "name": row["name"], "email": row["email"], "role": row["role"]}
+
+
 def current_user(request: Request) -> dict | None:
-    """The signed-in user, or None. Never raises — reads are anonymous."""
-    return request.session.get("user")
+    """The signed-in user, or None. Never raises — reads are anonymous.
+
+    Cached on the request, so an authenticated request costs one lookup no
+    matter how many times this is called across the route, the nav, and the
+    templates. An anonymous request costs none.
+    """
+    if not hasattr(request.state, "current_user"):
+        request.state.current_user = _load_user(request)
+    return request.state.current_user
 
 
 def require_user(request: Request) -> dict:

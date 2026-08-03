@@ -13,6 +13,86 @@ and the git commit subject.
 
 ---
 
+## [0.13.0] - 2026-08-03 — "No Grandfathering"
+
+**Commit summary:** read the role from the database on every request, so a
+demotion takes effect immediately instead of at the affected user's next
+sign-in.
+
+**Description:** The last real authorization hole, carried as a known gap since
+0.8.0. The role was snapshotted into the session cookie at sign-in, so removing
+someone's edit access did nothing until they happened to sign out — an
+indefinite window, since nothing forces a session to end. Revoking access has
+to actually revoke access. No schema change; `SCHEMA_VERSION` stays at `7`.
+
+The session still carries the account id; role, name, and email now come off
+the row on every request. That also means an account which has been deleted
+invalidates its session rather than falling back to the snapshot — "this user
+no longer exists" should never resolve to "use their old permissions".
+
+**The cost is one query per authenticated request, and it was measured rather
+than assumed.** `current_user` caches on `request.state`, so a route calling
+`require_editor` and a template rendering the nav share a single lookup. With
+Postgres `log_statement=all`, an authenticated `GET /` logged exactly one
+`FROM users WHERE id` — as did `GET /new`, which goes through both paths — and
+an anonymous render logged none. The first attempt at that measurement was
+wrong, marking the log before the sign-in redirect had finished rendering `/`
+and counting two; the number is one.
+
+**The tests were checked against the old behaviour.** `current_user` was
+reverted to `request.session.get("user")` and the suite re-run: 6 of the 7 new
+tests failed. The seventh asserts anonymous reads still work and correctly does
+not depend on the change. Every test here drives an *already-signed-in* client,
+because re-signing in would exercise the old path and pass either way.
+
+This also removes a workaround. 0.9.0 patched the actor's own session after a
+self-demotion, so they weren't left holding a stale admin cookie — a fix for
+one case of the general problem. The general problem is now fixed, so the
+special case is gone.
+
+Verified end to end: `/health` reports `0.13.0`, `pytest -q` passes 193 tests
+(up from 186), ruff clean.
+
+### Added
+
+- `repo.get_user()` and `auth._load_user()`, with per-request caching on
+  `request.state`.
+- `tests/api/test_live_roles.py` — 7 tests: promotion and demotion both
+  applying to a live session on the JSON and HTML surfaces, an admin losing the
+  accounts screen mid-session, self-demotion taking effect immediately, the nav
+  dropping the New page link for a demoted user, and anonymous reads still
+  working.
+
+### Changed
+
+- `app/version.py`: `APP_VERSION` `0.12.0` → `0.13.0`, `APP_VERSION_NAME` →
+  `"No Grandfathering"`. `SCHEMA_VERSION` unchanged at `7`.
+- **Behavioural change for anyone relying on the old lag:** a role change now
+  applies on the target's next request. A demoted user loses write access
+  mid-session rather than at their next sign-in.
+- `app/admin.py` no longer patches the actor's session after a self-demotion.
+- The accounts screen no longer says roles take effect at next sign-in, because
+  they no longer do.
+- `tests/api/test_admin.py`: `test_a_promotion_takes_effect_on_the_next_sign_in`
+  became `test_a_promotion_survives_the_next_sign_in` — the behaviour it named
+  is gone, but the property it actually guards (the allowlist not undoing a
+  manual promotion at re-sign-in) still matters.
+
+### Known gaps
+
+- **A signed-in session is one query heavier**, on every request including
+  reads. The obvious next step is a short TTL on the cached row, trading a
+  bounded staleness window for the query — deliberately not done here, since
+  the whole point of this release is that stale roles are the bug.
+- **Sign-out is still local only.** Nothing revokes a session server-side, so
+  an admin cannot boot someone; they can only take their permissions away. A
+  session table would fix it.
+- The account-deleted path is reasoned about but untested — there is still no
+  way to delete an account, and the suite cannot forge a session cookie.
+- Still unverified against real Google.
+
+---
+
 ## [0.12.0] - 2026-08-03 — "The Front Desk"
 
 **Commit summary:** add a README and a documentation index, served through the

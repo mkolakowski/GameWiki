@@ -63,7 +63,7 @@ def set_role(
         )
 
     try:
-        updated = repo.set_user_role(user_id, role, actor)
+        repo.set_user_role(user_id, role, actor)
     except repo.UserNotFound:
         return _render(request, error="No such account.", status_code=status.HTTP_404_NOT_FOUND)
     except repo.InvalidRole:
@@ -82,9 +82,6 @@ def set_role(
             status_code=status.HTTP_409_CONFLICT,
         )
 
-    # Keep the actor's own session honest if they changed their own role,
-    # rather than leaving them holding a stale admin cookie.
-    if user_id == actor.get("id"):
-        request.session["user"] = {**actor, "role": updated["role"]}
-
+    # Nothing to patch into the session: since 0.13.0 every request re-reads
+    # the role, so the actor's next one already reflects the change.
     return RedirectResponse("/admin/users", status_code=status.HTTP_303_SEE_OTHER)

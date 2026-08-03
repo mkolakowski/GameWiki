@@ -3,7 +3,7 @@
 
 {% block content %}
   <h1>Accounts</h1>
-  <p class="meta">{{ users|length }} account{{ '' if users|length == 1 else 's' }}. Roles take effect the next time that person signs in.</p>
+  <p class="meta">{{ users|length }} account{{ '' if users|length == 1 else 's' }}. Role changes take effect on that person&rsquo;s next request &mdash; no sign-out needed.</p>
 
   {% if error %}
     <p class="banner">{{ error }}</p>
