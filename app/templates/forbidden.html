@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}No edit access &mdash; GameWiki{% endblock %}
+
+{% block content %}
+  <h1>You don't have edit access</h1>
+
+  <p class="banner">{{ detail }}</p>
+
+  <p class="meta">
+    You are signed in as {{ user.name }}{% if user.email %} ({{ user.email }}){% endif %}.
+    Signing in again won't change this &mdash; an operator has to add your
+    account to the wiki's allowlist. You can still read every page.
+  </p>
+
+  <div class="actions">
+    <a class="button button--primary" href="/">Back to all pages</a>
+    <a class="button" href="/auth/logout">Sign out</a>
+  </div>
+{% endblock %}

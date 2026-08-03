@@ -15,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 
 from app import markup
 from app import repository as repo
-from app.auth import current_user, require_user
+from app.auth import current_user, require_editor
 from app.version import APP_VERSION, APP_VERSION_NAME
 
 router = APIRouter(tags=["web"])
@@ -40,6 +40,13 @@ def _see_other(url: str) -> RedirectResponse:
     return RedirectResponse(url, status_code=status.HTTP_303_SEE_OTHER)
 
 
+def render_forbidden(request: Request, detail: str):
+    """The 403 page. Called from the exception handler in app.main."""
+    return templates.TemplateResponse(
+        request, "forbidden.html", {"detail": detail}, status_code=status.HTTP_403_FORBIDDEN
+    )
+
+
 def _render_body(body: str) -> str:
     """Sanitised HTML for a page body, with wiki links resolved."""
     return markup.render(body, repo.existing_slugs(markup.extract_links(body)))
@@ -53,7 +60,7 @@ def index(request: Request):
 @router.get("/new", response_class=HTMLResponse)
 def new_page_form(request: Request, slug: str = "", title: str = ""):
     """Red links arrive here with slug and title prefilled from the link text."""
-    require_user(request)
+    require_editor(request)
     return templates.TemplateResponse(
         request, "new.html", {"slug": slug, "title": title, "body": "", "error": None}
     )
@@ -66,7 +73,7 @@ def create_page(
     title: str = Form(...),
     body: str = Form(""),
 ):
-    author = require_user(request)
+    author = require_editor(request)
 
     def reject(message: str):
         # Re-render with the user's text intact rather than losing their draft.
@@ -112,7 +119,7 @@ def view_page(request: Request, slug: str):
 
 @router.get("/w/{slug}/edit", response_class=HTMLResponse)
 def edit_page_form(request: Request, slug: str):
-    require_user(request)
+    require_editor(request)
     try:
         page = repo.get_page(slug)
     except repo.PageNotFound:
@@ -139,7 +146,7 @@ def save_page(
     title: str = Form(...),
     body: str = Form(""),
 ):
-    author = require_user(request)
+    author = require_editor(request)
     try:
         repo.update_page(slug, title, body, expected_revision=revision, author_id=author["id"])
     except repo.PageNotFound:

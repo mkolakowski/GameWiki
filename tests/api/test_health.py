@@ -19,6 +19,7 @@ def test_health_reports_the_running_version(client):
         "version_name",
         "schema_version",
         "auth_configured",
+        "allowlist_configured",
     }
     assert body["status"] == "ok"
 

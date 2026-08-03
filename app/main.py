@@ -60,6 +60,11 @@ async def unauthorized_goes_to_login(request: Request, exc: StarletteHTTPExcepti
         target = quote(request.url.path, safe="/")
         return RedirectResponse(f"/auth/login?next={target}", status_code=303)
 
+    # 403 is a different answer from 401: signing in again would not help,
+    # so the page explains that rather than bouncing to the provider.
+    if exc.status_code == 403 and wants_html:
+        return web.render_forbidden(request, exc.detail)
+
     return await http_exception_handler(request, exc)
 
 
@@ -76,4 +81,5 @@ def health() -> dict[str, str | int | bool]:
         "version_name": APP_VERSION_NAME,
         "schema_version": SCHEMA_VERSION,
         "auth_configured": auth.is_configured(),
+        "allowlist_configured": auth.allowlist_is_configured(),
     }

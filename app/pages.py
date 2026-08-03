@@ -13,7 +13,7 @@ from fastapi import APIRouter, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from app import repository as repo
-from app.auth import require_user
+from app.auth import require_editor
 
 router = APIRouter(prefix="/pages", tags=["pages"])
 
@@ -82,7 +82,7 @@ def list_pages() -> list[dict]:
 
 @router.post("", response_model=Page, status_code=status.HTTP_201_CREATED)
 def create_page(payload: PageCreate, request: Request, response: Response) -> dict:
-    author = require_user(request)
+    author = require_editor(request)
     try:
         page = repo.create_page(payload.slug, payload.title, payload.body, author["id"])
     except repo.SlugTaken:
@@ -120,7 +120,7 @@ def update_page(
     read, otherwise the edit is rejected as a conflict — this is how two
     editors racing on the same page avoid silently clobbering each other.
     """
-    author = require_user(request)
+    author = require_editor(request)
     expected = _parse_if_match(if_match) if if_match is not None else None
 
     try:

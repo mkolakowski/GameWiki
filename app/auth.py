@@ -30,6 +30,20 @@ OIDC_DISCOVERY_URL = os.getenv("OIDC_DISCOVERY_URL", GOOGLE_DISCOVERY)
 OIDC_CLIENT_ID = os.getenv("OIDC_CLIENT_ID", "")
 OIDC_CLIENT_SECRET = os.getenv("OIDC_CLIENT_SECRET", "")
 
+
+def _csv_set(name: str) -> set[str]:
+    return {
+        item.strip().lower().lstrip("@") for item in os.getenv(name, "").split(",") if item.strip()
+    }
+
+
+# Who may edit. Both empty means the wiki is open to any account that can
+# sign in — the 0.7.0 behaviour, kept so an upgrade does not lock everyone
+# out, but reported by /health so it is not a silent default.
+ALLOWED_EMAILS = _csv_set("ALLOWED_EMAILS")
+ALLOWED_DOMAINS = _csv_set("ALLOWED_DOMAINS")
+EDITOR_ROLES = {"editor", "admin"}
+
 # Sessions survive a restart only if this is set explicitly. An ephemeral
 # secret keeps the app bootable without config; it just signs everyone out.
 SESSION_SECRET = os.getenv("SESSION_SECRET") or secrets.token_urlsafe(32)
@@ -52,13 +66,28 @@ def is_configured() -> bool:
     return bool(OIDC_CLIENT_ID and OIDC_CLIENT_SECRET)
 
 
+def allowlist_is_configured() -> bool:
+    return bool(ALLOWED_EMAILS or ALLOWED_DOMAINS)
+
+
+def email_is_allowed(email: str | None) -> bool:
+    """Whether this address earns the editor role at sign-in."""
+    if not allowlist_is_configured():
+        return True
+    if not email:
+        return False
+
+    email = email.lower()
+    return email in ALLOWED_EMAILS or email.rpartition("@")[2] in ALLOWED_DOMAINS
+
+
 def current_user(request: Request) -> dict | None:
     """The signed-in user, or None. Never raises — reads are anonymous."""
     return request.session.get("user")
 
 
 def require_user(request: Request) -> dict:
-    """The signed-in user, or a 401. Use on every write path."""
+    """The signed-in user, or a 401. Authentication only."""
     user = current_user(request)
     if user is None:
         raise HTTPException(
@@ -68,6 +97,22 @@ def require_user(request: Request) -> dict:
                 if is_configured()
                 else "editing is disabled: this instance has no OIDC provider configured"
             ),
+        )
+    return user
+
+
+def require_editor(request: Request) -> dict:
+    """A signed-in user who may write, or 401/403.
+
+    401 and 403 are different answers: 401 means "we don't know who you are,
+    sign in", 403 means "we know exactly who you are and the answer is no".
+    Signing in again would not help the second case.
+    """
+    user = require_user(request)
+    if user.get("role") not in EDITOR_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="your account does not have edit access on this wiki",
         )
     return user
 
@@ -122,17 +167,22 @@ async def callback(request: Request):
     if not subject:
         return HTMLResponse("<h1>Sign-in failed</h1><p>no subject claim</p>", status_code=400)
 
+    email = claims.get("email")
     user = repo.upsert_user(
         issuer=claims.get("iss", OIDC_DISCOVERY_URL),
         subject=subject,
-        email=claims.get("email"),
-        name=claims.get("name") or claims.get("email") or "Anonymous",
+        email=email,
+        name=claims.get("name") or email or "Anonymous",
+        allowed=email_is_allowed(email),
     )
 
+    # The role is snapshotted into the session, so a role change made in the
+    # database takes effect on the user's next sign-in, not immediately.
     request.session["user"] = {
         "id": user["id"],
         "name": user["name"],
         "email": user["email"],
+        "role": user["role"],
     }
 
     return RedirectResponse(request.session.pop("next", "/"), status_code=status.HTTP_303_SEE_OTHER)

@@ -173,7 +173,7 @@ def test_a_changed_display_name_follows_the_same_user(client, sign_in_as, slug):
 def test_a_hostile_display_name_is_escaped_in_history(sign_in_as, client, slug, assert_safe_html):
     hostile = sign_in_as(
         "google-oauth2|000000000000000000003",
-        "evil@example.com",
+        "evil@allowed.example",
         "<script>alert(1)</script>",
     )
     hostile.post("/pages", json={"slug": slug, "title": "Written by a hostile name"})

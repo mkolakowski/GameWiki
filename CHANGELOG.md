@@ -13,6 +13,89 @@ and the git commit subject.
 
 ---
 
+## [0.8.0] - 2026-08-03 — "The Guest List"
+
+**Commit summary:** add an edit allowlist and user roles, so authentication
+finally decides something.
+
+**Description:** 0.7.0 established *who* you are; this decides *whether you may
+write*. Until now any Google account on earth could edit any page. Roles are
+`reader`, `editor`, and `admin`, and `SCHEMA_VERSION` goes to `5`.
+
+`ALLOWED_EMAILS` and `ALLOWED_DOMAINS` are comma-separated env lists. Matching
+either earns the editor role at sign-in; everyone else signs in as a reader and
+gets a 403 on any write while keeping full read access.
+
+**The role is recomputed on every sign-in**, not stored once, so taking someone
+off the allowlist actually revokes their access rather than grandfathering
+them. Two exceptions: the first account on a fresh instance becomes admin so
+there is someone to administer it, and an existing admin is never automatically
+demoted — an operator shouldn't be able to lock themselves out by editing an
+env var. Migration 005 promotes the earliest existing account, so an instance
+upgrading from 0.7.0 doesn't end up with no admin at all.
+
+**With both lists unset, the wiki stays open to any account that can sign
+in** — the 0.7.0 behaviour, kept so an upgrade doesn't lock out every existing
+editor. That is a permissive default, so `/health` reports
+`allowlist_configured` and it's documented in `.env.example` rather than being
+silent.
+
+**401 and 403 are answered differently on purpose.** 401 means "we don't know
+who you are" and sends a browser to sign in. 403 means "we know exactly who you
+are and the answer is no" — signing in again would achieve nothing, so readers
+get a page saying so, naming the account they're signed in as and explaining
+that an operator has to add them. Readers also stop seeing Edit and New page
+affordances that would only fail.
+
+Verified end to end: migration 005 applied, `/health` reports `0.8.0` /
+`schema_version: 5` / `allowlist_configured: true`, `pytest -q` passes 105
+tests (up from 92), ruff clean. Probed by hand: an allowlisted email and an
+allowlisted domain both write successfully, a non-allowlisted account gets 403
+on the API and the explanatory page in a browser while still reading fine, and
+the database shows the expected admin/editor/reader split.
+
+### Added
+
+- `app/migrations/005_add_user_roles.sql` — `users.role` with a CHECK
+  constraint, defaulting to `reader`, plus promotion of the earliest existing
+  account to admin.
+- `ALLOWED_EMAILS` / `ALLOWED_DOMAINS` config, `allowlist_is_configured()`, and
+  `email_is_allowed()`.
+- `require_editor()` alongside `require_user()`, now used on every write path
+  on both the JSON and HTML surfaces.
+- `app/templates/forbidden.html` — the 403 page, rendered for browsers by the
+  exception handler in `app/main.py`.
+- `allowlist_configured` on `/health`.
+- `tests/api/test_authz.py` — 13 tests: allowlist by email and by domain,
+  outsiders blocked on create, update, and the edit form, outsiders still able
+  to read, the HTML-vs-JSON refusal split, edit affordances hidden from
+  readers, re-evaluation of a role when an address moves onto the allowlist,
+  and no silent promotion from repeated sign-ins.
+
+### Changed
+
+- `app/version.py`: `APP_VERSION` `0.7.0` → `0.8.0`, `APP_VERSION_NAME` →
+  `"The Guest List"`, `SCHEMA_VERSION` `4` → `5`.
+- **Breaking where an allowlist is set:** accounts outside it now get 403 on
+  writes that previously succeeded.
+- `repo.upsert_user` takes an `allowed` flag and returns the role; the session
+  carries it.
+- `/health` gained `allowlist_configured` — clients asserting an exact key set
+  need updating.
+- Nav hides New page from readers and shows the role in the user tooltip.
+
+### Known gaps
+
+- **No admin UI.** Admin currently means "editor who can't be demoted by an
+  allowlist change". Changing anyone's role is a manual
+  `UPDATE users SET role = ...`. An admin screen is the natural next bump.
+- **Role changes take effect at next sign-in**, since the role is snapshotted
+  into the session. A demoted user keeps editing until their session ends.
+- Still no CSRF tokens — see the gap noted in 0.7.0.
+- Still unverified against real Google.
+
+---
+
 ## [0.7.0] - 2026-08-03 — "Who Goes There"
 
 **Commit summary:** add Google OIDC sign-in, gate writes on a session, and

@@ -14,6 +14,9 @@ services:
       OIDC_CLIENT_ID: gamewiki-dev
       OIDC_CLIENT_SECRET: dev-secret-not-for-production
       SESSION_SECRET: dev-session-secret-not-for-production
+      # Who may edit. Both empty means any account that can sign in.
+      ALLOWED_EMAILS: ada@example.com,grace@example.com
+      ALLOWED_DOMAINS: allowed.example
       OIDC_TEST_BASE_URL: http://oidc:9000
     depends_on:
       db:

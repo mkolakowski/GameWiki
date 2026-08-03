@@ -54,6 +54,18 @@ button:hover,
     color: var(--accent);
 }
 
+.button--muted {
+    color: var(--muted);
+    background: transparent;
+    border-style: dashed;
+    cursor: not-allowed;
+}
+
+.button--muted:hover {
+    border-color: var(--rule);
+    color: var(--muted);
+}
+
 .button--primary {
     background: var(--accent);
     border-color: var(--accent);

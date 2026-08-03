@@ -21,8 +21,10 @@
   {% endif %}
 
   <div class="actions">
-    {% if user %}
+    {% if user and user.role in ("editor", "admin") %}
       <a class="button button--primary" href="/new">New page</a>
+    {% elif user %}
+      <span class="button button--muted" aria-disabled="true">No edit access</span>
     {% else %}
       <a class="button" href="/auth/login?next=/new">Sign in to add a page</a>
     {% endif %}

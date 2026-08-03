@@ -43,19 +43,43 @@ def _sync_links(conn, page_id: int, body: str) -> None:
         )
 
 
-def upsert_user(issuer: str, subject: str, email: str | None, name: str) -> dict:
+RETURNING_USER = "id, issuer, subject, email, name, role"
+
+
+def upsert_user(issuer: str, subject: str, email: str | None, name: str, allowed: bool) -> dict:
     """Record the signed-in identity, keyed on (issuer, subject).
 
     Email and name are refreshed on every sign-in, since the provider is the
     authority on both and either can change.
+
+    The role is recomputed from `allowed` on every sign-in so that removing
+    someone from the allowlist actually revokes their access. Two exceptions:
+    the very first account on a fresh instance becomes admin so there is
+    someone to administer it, and an existing admin is never demoted — an
+    operator shouldn't be able to lock themselves out by editing an env var.
     """
-    with pool.connection() as conn:
+    with pool.connection() as conn, conn.transaction():
+        existing = conn.execute(
+            "SELECT id, role FROM users WHERE issuer = %s AND subject = %s FOR UPDATE",
+            (issuer, subject),
+        ).fetchone()
+
+        if existing is None:
+            first_ever = conn.execute("SELECT count(*) AS n FROM users").fetchone()["n"] == 0
+            role = "admin" if first_ever else ("editor" if allowed else "reader")
+            return conn.execute(
+                "INSERT INTO users (issuer, subject, email, name, role)"
+                f" VALUES (%s, %s, %s, %s, %s) RETURNING {RETURNING_USER}",
+                (issuer, subject, email, name, role),
+            ).fetchone()
+
+        role = (
+            existing["role"] if existing["role"] == "admin" else ("editor" if allowed else "reader")
+        )
         return conn.execute(
-            "INSERT INTO users (issuer, subject, email, name) VALUES (%s, %s, %s, %s)"
-            " ON CONFLICT (issuer, subject) DO UPDATE"
-            " SET email = EXCLUDED.email, name = EXCLUDED.name, last_seen_at = now()"
-            " RETURNING id, issuer, subject, email, name",
-            (issuer, subject, email, name),
+            "UPDATE users SET email = %s, name = %s, role = %s, last_seen_at = now()"
+            f" WHERE id = %s RETURNING {RETURNING_USER}",
+            (email, name, role, existing["id"]),
         ).fetchone()
 
 
