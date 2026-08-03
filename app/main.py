@@ -1,10 +1,31 @@
 """GameWiki — FastAPI application entrypoint."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
+from app import pages
+from app.db import pool, run_migrations
 from app.version import APP_VERSION, APP_VERSION_NAME, SCHEMA_VERSION
 
-app = FastAPI(title="GameWiki", version=APP_VERSION)
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    pool.open(wait=True, timeout=30)
+
+    applied = run_migrations()
+    if applied != SCHEMA_VERSION:
+        raise RuntimeError(
+            f"schema drift: {applied} migration(s) applied but SCHEMA_VERSION is "
+            f"{SCHEMA_VERSION}. Bump SCHEMA_VERSION by +1 for every migration added."
+        )
+
+    yield
+    pool.close()
+
+
+app = FastAPI(title="GameWiki", version=APP_VERSION, lifespan=lifespan)
+app.include_router(pages.router)
 
 
 @app.get("/health")
