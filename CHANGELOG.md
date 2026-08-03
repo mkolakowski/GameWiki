@@ -13,6 +13,75 @@ and the git commit subject.
 
 ---
 
+## [0.4.0] - 2026-08-03 — "Nothing Is Lost"
+
+**Commit summary:** add revision history and optimistic concurrency on page
+edits.
+
+**Description:** Closes the data-loss gap left open by 0.3.0. Every version of
+a page is now recorded in `page_revisions`, and `PUT` appends rather than
+destroys. `SCHEMA_VERSION` goes to `2`.
+
+**History starts at creation, not at the first edit.** The approved sketch had
+`PUT` snapshot the *prior* text, which would leave a never-edited page with an
+empty history and make revision numbers lag the edit count. Instead `POST`
+writes revision 1 and each `PUT` appends revision N+1, so `revisions/{n}` is
+addressable for every version including the current one. The prior text is
+preserved either way — this just makes the history complete.
+
+`pages.revision` is a denormalised pointer at the latest revision and doubles
+as the ETag, which is served on `POST`, `GET`, and `PUT` responses. `PUT`
+accepts an optional `If-Match`: supply the revision you read and a racing edit
+is rejected instead of clobbering. **`If-Match` is optional, so a client that
+omits it still gets last-write-wins** — the prior text survives in the history,
+but the conflict is not surfaced. Requiring it would be a breaking change and
+belongs in its own bump.
+
+**Conflicts return 409, not 412.** RFC 9110 specifies 412 Precondition Failed
+for a failed `If-Match`. This project uses 409 to match the edit-conflict
+convention already named in CLAUDE.md's test contract. Worth revisiting if a
+generic HTTP client ever consumes the API.
+
+The check-then-write in `PUT` runs inside a transaction with `SELECT … FOR
+UPDATE`, so two concurrent edits can't both observe the same revision and pass
+the precondition.
+
+Verified end to end: migration 002 applied at startup and backfilled revision 1
+for all 10 pre-existing pages, `/health` reports `0.4.0` / "Nothing Is Lost" /
+`schema_version: 2`, `pytest -q` passes 19 tests (up from 11), ruff clean.
+Manually confirmed the ETag headers, that a stale `If-Match` returns 409, and
+that the losing write leaves no trace.
+
+### Added
+
+- `app/migrations/002_create_page_revisions.sql` — `page_revisions`
+  (`page_id` FK cascade, `revision`, `title`, `body`, `created_at`, unique on
+  `(page_id, revision)`), a `revision` column on `pages`, and a backfill making
+  every pre-existing page its own revision 1.
+- `GET /pages/{slug}/revisions` → 200, newest first, summaries (revision, title,
+  created_at — no body); 404 on unknown slug.
+- `GET /pages/{slug}/revisions/{n}` → 200 with the full text of that version;
+  404 on unknown slug or unknown revision.
+- `If-Match` support on `PUT /pages/{slug}` → **409** when the named revision
+  isn't current, **400** when the header is malformed. Accepts `"3"`, `W/"3"`,
+  and a bare `3`.
+- `ETag` response header on `POST /pages`, `GET /pages/{slug}`, and
+  `PUT /pages/{slug}`.
+- Eight tests in `tests/api/test_pages.py` covering the concurrency and history
+  surfaces, including one asserting the original text is still readable after an
+  overwrite.
+
+### Changed
+
+- `app/version.py`: `APP_VERSION` `0.3.0` → `0.4.0`, `APP_VERSION_NAME` →
+  `"Nothing Is Lost"`, `SCHEMA_VERSION` `1` → `2`.
+- **Response shape:** `Page` and `PageSummary` now carry `revision`. Clients
+  asserting on an exact key set need updating — the existing tests were.
+- `POST /pages` now writes its revision row in the same transaction as the page,
+  so a failed insert can't leave a page without history.
+
+---
+
 ## [0.3.0] - 2026-08-03 — "The Binding"
 
 **Commit summary:** add the pages table, the first migration, and slug-keyed
