@@ -13,6 +13,62 @@ and the git commit subject.
 
 ---
 
+## [0.5.1] - 2026-08-03 — "The Turnstile"
+
+**Commit summary:** add the CI workflow and a release-metadata checker.
+
+**Description:** The branch had no automatic regression gate — 34 tests only
+ran when someone remembered to run them. GitHub Actions now runs on push to
+`main` and on every pull request.
+
+Two jobs run in parallel. **Tests and lint** builds the Compose stack, waits for
+healthy, asserts the running `/health` version matches the source tree, then
+runs pytest and both ruff checks, dumping container logs on failure. **Release
+metadata** runs `scripts/check_release.py`, which enforces the four rules
+CLAUDE.md states but nothing could previously catch: the changelog's top entry
+matches `APP_VERSION`, its Fun Name matches `APP_VERSION_NAME`,
+`SCHEMA_VERSION` equals the migration-file count, and — given a base ref — the
+version actually moved. Those are exactly the rules a reviewer skims past, so
+they belong in CI rather than in a reader's memory.
+
+The checker is runnable locally as `python3 scripts/check_release.py`, which is
+the point: catch it before the commit, not after the push.
+
+**Lint scope moved off `exec`.** The first draft ran ruff via `docker compose
+exec app`, which lints `/srv` — and the image only carries `app/` and `tests/`.
+That silently excluded `scripts/` and anything new at the repo root; ruff found
+two real violations in `check_release.py` that the container-side lint reported
+as clean. Both lint steps now bind-mount the checked-out tree instead, so CI
+lints what is actually committed.
+
+Nothing about the app changed — no source, schema, or endpoint is touched, so
+`SCHEMA_VERSION` stays at `2`.
+
+**Unverified:** the workflow itself has never executed. It is written against
+`ubuntu-latest`'s bundled Docker Compose and cannot run on this machine; the
+first push is its first real test. `scripts/check_release.py` was run locally
+against this working tree and passes, including the `--base` bump check against
+`HEAD`.
+
+### Added
+
+- `.github/workflows/ci.yml` — `release-check` and `test` jobs on push to `main`
+  and on pull requests.
+- `scripts/check_release.py` — changelog/version/fun-name/schema consistency,
+  plus an optional `--base <ref>` check that the version was bumped. Exercised
+  locally against both failure paths: an unbumped version and a
+  `SCHEMA_VERSION` that disagrees with the migration count.
+
+### Changed
+
+- `app/version.py`: `APP_VERSION` `0.5.0` → `0.5.1`, `APP_VERSION_NAME` →
+  `"The Turnstile"`.
+- `CLAUDE.md`: the integration-test section's CI paragraph now names the
+  workflow, its triggers, and what each job enforces, replacing the placeholder
+  saying no CI existed.
+
+---
+
 ## [0.5.0] - 2026-08-03 — "The Reading Room"
 
 **Commit summary:** add the server-rendered browser UI — page list, page view,

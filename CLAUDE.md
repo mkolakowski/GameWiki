@@ -258,11 +258,21 @@ doesn't exist, file the happy-path test as a to-do and ship the **error-path
 tests this commit anyway**. Error paths exercise the contract surface without
 needing that state.
 
-**CI** runs the suite on push and PR — keep it green. If CI is ever set to manual
-dispatch, say so explicitly here, because it means the branch has **no automatic
-regression gate** and someone must fire it by hand. *(No CI workflow exists yet —
-the commit that adds one must update this paragraph to state which trigger it
-uses.)*
+**CI** (`.github/workflows/ci.yml`) runs automatically on push to `main` and on
+every pull request — keep it green. If it is ever switched to
+`workflow_dispatch`, say so explicitly here, because it means the branch has
+**no automatic regression gate** and someone must fire it by hand.
+
+Two jobs run in parallel:
+
+- **Release metadata** — `scripts/check_release.py` asserts the changelog's top
+  entry matches `APP_VERSION`, its Fun Name matches `APP_VERSION_NAME`, and
+  `SCHEMA_VERSION` equals the number of migration files. With `--base <ref>` it
+  also fails a commit that didn't bump the version. Run it locally before
+  committing: `python3 scripts/check_release.py`.
+- **Tests and lint** — builds the stack, waits for healthy, asserts the running
+  `/health` version matches the source tree, then runs pytest and both ruff
+  checks.
 
 **Applies if the project maintains a coverage index:** every test change — add,
 remove, rename, or material assertion shift — also updates the coverage doc in

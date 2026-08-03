@@ -1,0 +1,75 @@
+name: CI
+
+# Automatic on push to main and on every PR — this is the branch's regression
+# gate. If it is ever switched to workflow_dispatch, say so in CLAUDE.md.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  release-check:
+    name: Release metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need the base commit to check that the version actually moved.
+          fetch-depth: 0
+
+      - name: Check changelog, fun name, and schema version
+        run: python3 scripts/check_release.py
+
+      - name: Check the version was bumped
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "no base commit to compare against; skipping"
+            exit 0
+          fi
+          python3 scripts/check_release.py --base "$BASE"
+
+  test:
+    name: Tests and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start the stack
+        run: docker compose up -d --build app
+
+      - name: Wait for the app to report healthy
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -sf http://localhost:8000/health; then
+              echo
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "app never became healthy"
+          exit 1
+
+      - name: Assert the running version matches the source tree
+        run: |
+          running=$(curl -sf http://localhost:8000/health | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
+          expected=$(python3 -c 'import re,pathlib; print(re.search(r"APP_VERSION = \"([^\"]+)\"", pathlib.Path("app/version.py").read_text()).group(1))')
+          echo "running=$running expected=$expected"
+          [ "$running" = "$expected" ]
+
+      - name: Tests
+        run: docker compose exec -T app pytest -q
+
+      # Linting runs against the checked-out tree rather than `exec` into the
+      # container, which only carries app/ and tests/ — scripts/ and anything
+      # new at the repo root would otherwise never be linted.
+      - name: Lint
+        run: docker compose run --rm --no-deps -v "$PWD":/src -w /src app ruff check .
+
+      - name: Format
+        run: docker compose run --rm --no-deps -v "$PWD":/src -w /src app ruff format --check .
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker compose logs --tail 200
