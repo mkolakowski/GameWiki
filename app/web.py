@@ -15,11 +15,18 @@ from fastapi.templating import Jinja2Templates
 
 from app import markup
 from app import repository as repo
+from app.auth import current_user, require_user
 from app.version import APP_VERSION, APP_VERSION_NAME
 
 router = APIRouter(tags=["web"])
 
-templates = Jinja2Templates(directory="app/templates")
+
+def _user_context(request: Request) -> dict:
+    """Every template needs to know who is signed in, for the nav."""
+    return {"user": current_user(request)}
+
+
+templates = Jinja2Templates(directory="app/templates", context_processors=[_user_context])
 templates.env.globals["app_version"] = APP_VERSION
 templates.env.globals["app_version_name"] = APP_VERSION_NAME
 
@@ -46,6 +53,7 @@ def index(request: Request):
 @router.get("/new", response_class=HTMLResponse)
 def new_page_form(request: Request, slug: str = "", title: str = ""):
     """Red links arrive here with slug and title prefilled from the link text."""
+    require_user(request)
     return templates.TemplateResponse(
         request, "new.html", {"slug": slug, "title": title, "body": "", "error": None}
     )
@@ -58,6 +66,8 @@ def create_page(
     title: str = Form(...),
     body: str = Form(""),
 ):
+    author = require_user(request)
+
     def reject(message: str):
         # Re-render with the user's text intact rather than losing their draft.
         return templates.TemplateResponse(
@@ -75,7 +85,7 @@ def create_page(
         return reject("A title is required.")
 
     try:
-        repo.create_page(slug, title, body)
+        repo.create_page(slug, title, body, author["id"])
     except repo.SlugTaken:
         return reject(f"A page with the slug {slug!r} already exists.")
 
@@ -102,6 +112,7 @@ def view_page(request: Request, slug: str):
 
 @router.get("/w/{slug}/edit", response_class=HTMLResponse)
 def edit_page_form(request: Request, slug: str):
+    require_user(request)
     try:
         page = repo.get_page(slug)
     except repo.PageNotFound:
@@ -128,8 +139,9 @@ def save_page(
     title: str = Form(...),
     body: str = Form(""),
 ):
+    author = require_user(request)
     try:
-        repo.update_page(slug, title, body, expected_revision=revision)
+        repo.update_page(slug, title, body, expected_revision=revision, author_id=author["id"])
     except repo.PageNotFound:
         raise _NO_PAGE from None
     except repo.RevisionConflict as conflict:

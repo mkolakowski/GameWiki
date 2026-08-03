@@ -21,6 +21,10 @@
   {% endif %}
 
   <div class="actions">
-    <a class="button button--primary" href="/new">New page</a>
+    {% if user %}
+      <a class="button button--primary" href="/new">New page</a>
+    {% else %}
+      <a class="button" href="/auth/login?next=/new">Sign in to add a page</a>
+    {% endif %}
   </div>
 {% endblock %}

@@ -8,8 +8,17 @@ services:
       # never a hardcoded public endpoint. See CLAUDE.md.
       DATABASE_URL: postgresql://gamewiki:gamewiki@db:5432/gamewiki
       GAMEWIKI_BASE_URL: http://localhost:8000
+      # Points at the local stub provider. In production this is left unset so
+      # the app falls back to Google's discovery document.
+      OIDC_DISCOVERY_URL: http://oidc:9000/.well-known/openid-configuration
+      OIDC_CLIENT_ID: gamewiki-dev
+      OIDC_CLIENT_SECRET: dev-secret-not-for-production
+      SESSION_SECRET: dev-session-secret-not-for-production
+      OIDC_TEST_BASE_URL: http://oidc:9000
     depends_on:
       db:
+        condition: service_healthy
+      oidc:
         condition: service_healthy
     healthcheck:
       test:
@@ -29,14 +38,38 @@ services:
       POSTGRES_PASSWORD: gamewiki
       POSTGRES_DB: gamewiki
     volumes:
-      # Named volume — holds page content once the schema lands. Never wipe it
-      # to get past a startup error.
+      # Named volume — holds page content. Never wipe it to get past a
+      # startup error.
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U gamewiki -d gamewiki"]
       interval: 5s
       timeout: 3s
       retries: 12
+
+  # Stand-in for Google's OIDC endpoints, so sign-in works offline and CI can
+  # exercise the real Authlib code path. Never deploy this — it approves every
+  # authorization request. See devtools/fake_oidc.py.
+  oidc:
+    build: .
+    command: uvicorn devtools.fake_oidc:app --host 0.0.0.0 --port 9000
+    ports:
+      # Published so a browser on the host can complete the redirect. The
+      # authorize URL uses the internal hostname `oidc`, which the host does
+      # not resolve by default — add `127.0.0.1 oidc` to /etc/hosts to click
+      # through sign-in manually. The test suite runs inside the app
+      # container, where Docker DNS already resolves it.
+      - "9000:9000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://localhost:9000/health")
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 3s
 
 volumes:
   pgdata:

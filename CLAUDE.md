@@ -16,7 +16,7 @@ skim past gates. **If a future section is added, gate it the same way.**
 |---|---|
 | Version home | `app/version.py` — `APP_VERSION`, `APP_VERSION_NAME`, `SCHEMA_VERSION` |
 | Changelog | Standalone `CHANGELOG.md` at the repo root |
-| Rebuild | `docker compose up -d --build app` |
+| Rebuild | `docker compose up -d --build` (app, db, and the stub OIDC provider) |
 | Test | `docker compose exec app pytest -q` |
 | Lint | `docker compose exec app ruff check .` and `ruff format --check .` |
 
@@ -173,14 +173,14 @@ A commit that bumps `APP_VERSION` does **not** propagate to the running instance
 automatically. After committing, rebuild:
 
 ```bash
-docker compose up -d --build app
+docker compose up -d --build
 ```
 
 then poll `GET /health` until it reports the new `APP_VERSION`:
 
 ```bash
 curl -s http://localhost:8000/health
-# {"status":"ok","version":"...","version_name":"...","schema_version":0}
+# {"status":"ok","version":"...","version_name":"...","schema_version":4,"auth_configured":true}
 ```
 
 This applies to **every** version bump — including doc-only
@@ -375,6 +375,12 @@ and removes runtime internet calls from the hot path.
 **Pattern to follow for every new API:**
 
 1. Add a service block in `docker-compose.yml` with a `healthcheck`.
+   *Exception — identity providers.* Google's OIDC endpoints can't be
+   self-hosted, so the shape is: production reads a discovery URL from the
+   environment and defaults to the real provider, while Compose points dev
+   and CI at a stub service (`oidc`, from `devtools/fake_oidc.py`). The
+   principle is unchanged — no hardcoded public endpoint, and no test that
+   needs the internet. See CHANGELOG 0.7.0 for what that stub cannot prove.
 2. Add the internal base URL as an env var in the `app` service (e.g.
    `MY_API_BASE_URL: http://myapi:port/v1`).
 3. Add the env var (commented out) to `.env.example` with a note that

@@ -70,7 +70,62 @@ def base_url() -> str:
     return os.getenv("GAMEWIKI_BASE_URL", "http://localhost:8000").rstrip("/")
 
 
+@pytest.fixture(scope="session")
+def oidc_base_url() -> str:
+    """The stub provider — see devtools/fake_oidc.py."""
+    return os.getenv("OIDC_TEST_BASE_URL", "http://oidc:9000").rstrip("/")
+
+
+def sign_in(
+    client: httpx.Client,
+    oidc_base_url: str,
+    *,
+    sub: str = "google-oauth2|000000000000000000001",
+    email: str = "ada@example.com",
+    name: str = "Ada Lovelace",
+) -> None:
+    """Drive a real authorization-code flow against the stub provider.
+
+    Nothing here is mocked: the app performs discovery, redirects, exchanges
+    the code, and validates an RS256 id_token. The stub just always says yes.
+    """
+    httpx.post(
+        f"{oidc_base_url}/_test/identity",
+        json={"sub": sub, "email": email, "name": name},
+        timeout=10.0,
+    ).raise_for_status()
+
+    response = client.get("/auth/login", params={"next": "/"}, follow_redirects=True)
+    assert response.status_code == 200, f"sign-in failed: {response.status_code} {response.text}"
+
+
 @pytest.fixture
-def client(base_url: str):
+def anon_client(base_url: str):
+    """A client that has not signed in."""
     with httpx.Client(base_url=base_url, timeout=10.0) as c:
         yield c
+
+
+@pytest.fixture
+def client(base_url: str, oidc_base_url: str):
+    """A signed-in client. Most of the suite writes, so this is the default."""
+    with httpx.Client(base_url=base_url, timeout=10.0) as c:
+        sign_in(c, oidc_base_url)
+        yield c
+
+
+@pytest.fixture
+def sign_in_as(base_url: str, oidc_base_url: str):
+    """Build an additional signed-in client, for multi-user tests."""
+    clients = []
+
+    def make(sub: str, email: str, name: str) -> httpx.Client:
+        c = httpx.Client(base_url=base_url, timeout=10.0)
+        sign_in(c, oidc_base_url, sub=sub, email=email, name=name)
+        clients.append(c)
+        return c
+
+    yield make
+
+    for c in clients:
+        c.close()

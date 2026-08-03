@@ -159,7 +159,7 @@ def test_creation_is_revision_one(client, page, slug):
     assert response.status_code == 200
     history = response.json()
     assert len(history) == 1
-    assert set(history[0]) == {"revision", "title", "created_at"}
+    assert set(history[0]) == {"revision", "title", "created_at", "author"}
     assert history[0]["revision"] == 1
     assert history[0]["title"] == "Chrono Trigger"
 
@@ -186,6 +186,7 @@ def test_prior_text_survives_an_edit(client, page, slug):
         "title": "Chrono Trigger",
         "body": "A JRPG.",
         "created_at": page["updated_at"],
+        "author": "Ada Lovelace",
     }
 
 

@@ -11,7 +11,13 @@
     <a class="nav-brand" href="/">GameWiki</a>
     <nav>
       <a href="/">All pages</a>
-      <a href="/new">New page</a>
+      {% if user %}
+        <a href="/new">New page</a>
+        <span class="nav-user" title="{{ user.email }}">{{ user.name }}</span>
+        <a href="/auth/logout">Sign out</a>
+      {% else %}
+        <a href="/auth/login?next={{ request.url.path|urlencode }}">Sign in with Google</a>
+      {% endif %}
     </nav>
   </header>
 

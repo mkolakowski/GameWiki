@@ -43,6 +43,22 @@ def _sync_links(conn, page_id: int, body: str) -> None:
         )
 
 
+def upsert_user(issuer: str, subject: str, email: str | None, name: str) -> dict:
+    """Record the signed-in identity, keyed on (issuer, subject).
+
+    Email and name are refreshed on every sign-in, since the provider is the
+    authority on both and either can change.
+    """
+    with pool.connection() as conn:
+        return conn.execute(
+            "INSERT INTO users (issuer, subject, email, name) VALUES (%s, %s, %s, %s)"
+            " ON CONFLICT (issuer, subject) DO UPDATE"
+            " SET email = EXCLUDED.email, name = EXCLUDED.name, last_seen_at = now()"
+            " RETURNING id, issuer, subject, email, name",
+            (issuer, subject, email, name),
+        ).fetchone()
+
+
 def existing_slugs(slugs: set[str]) -> set[str]:
     """Which of these slugs actually have a page — drives red-link styling."""
     if not slugs:
@@ -87,7 +103,7 @@ def get_page(slug: str) -> dict:
     return page
 
 
-def create_page(slug: str, title: str, body: str) -> dict:
+def create_page(slug: str, title: str, body: str, author_id: int | None = None) -> dict:
     with pool.connection() as conn:
         try:
             with conn.transaction():
@@ -99,9 +115,10 @@ def create_page(slug: str, title: str, body: str) -> dict:
                 # The initial content is revision 1 — history starts at creation,
                 # not at the first edit.
                 conn.execute(
-                    "INSERT INTO page_revisions (page_id, revision, title, body, created_at)"
-                    " VALUES (%s, 1, %s, %s, %s)",
-                    (page["id"], page["title"], page["body"], page["updated_at"]),
+                    "INSERT INTO page_revisions"
+                    " (page_id, revision, title, body, created_at, author_id)"
+                    " VALUES (%s, 1, %s, %s, %s, %s)",
+                    (page["id"], page["title"], page["body"], page["updated_at"], author_id),
                 )
                 _sync_links(conn, page["id"], page["body"])
         except psycopg.errors.UniqueViolation:
@@ -110,7 +127,13 @@ def create_page(slug: str, title: str, body: str) -> dict:
     return page
 
 
-def update_page(slug: str, title: str, body: str, expected_revision: int | None = None) -> dict:
+def update_page(
+    slug: str,
+    title: str,
+    body: str,
+    expected_revision: int | None = None,
+    author_id: int | None = None,
+) -> dict:
     """Replace a page's content, appending a revision.
 
     When expected_revision is given it must be the current one, otherwise
@@ -137,9 +160,17 @@ def update_page(slug: str, title: str, body: str, expected_revision: int | None 
         ).fetchone()
 
         conn.execute(
-            "INSERT INTO page_revisions (page_id, revision, title, body, created_at)"
-            " VALUES (%s, %s, %s, %s, %s)",
-            (current["id"], page["revision"], page["title"], page["body"], page["updated_at"]),
+            "INSERT INTO page_revisions"
+            " (page_id, revision, title, body, created_at, author_id)"
+            " VALUES (%s, %s, %s, %s, %s, %s)",
+            (
+                current["id"],
+                page["revision"],
+                page["title"],
+                page["body"],
+                page["updated_at"],
+                author_id,
+            ),
         )
         _sync_links(conn, current["id"], page["body"])
 
@@ -153,9 +184,12 @@ def list_revisions(slug: str) -> list[dict]:
         if page is None:
             raise PageNotFound(slug)
 
+        # Revisions written before authorship existed have no author; the view
+        # renders those as "unknown" rather than hiding them.
         return conn.execute(
-            "SELECT revision, title, created_at FROM page_revisions"
-            " WHERE page_id = %s ORDER BY revision DESC",
+            "SELECT r.revision, r.title, r.created_at, u.name AS author"
+            " FROM page_revisions r LEFT JOIN users u ON u.id = r.author_id"
+            " WHERE r.page_id = %s ORDER BY r.revision DESC",
             (page["id"],),
         ).fetchall()
 
@@ -167,8 +201,9 @@ def get_revision(slug: str, revision: int) -> dict:
             raise PageNotFound(slug)
 
         row = conn.execute(
-            "SELECT revision, title, body, created_at FROM page_revisions"
-            " WHERE page_id = %s AND revision = %s",
+            "SELECT r.revision, r.title, r.body, r.created_at, u.name AS author"
+            " FROM page_revisions r LEFT JOIN users u ON u.id = r.author_id"
+            " WHERE r.page_id = %s AND r.revision = %s",
             (page["id"], revision),
         ).fetchone()
 

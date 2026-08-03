@@ -4,7 +4,8 @@
 {% block content %}
   <p class="notice">
     You are reading revision {{ revision.revision }} of
-    <a href="/w/{{ slug }}">this page</a>, saved
+    <a href="/w/{{ slug }}">this page</a>, saved by
+    {{ revision.author or "an unknown author" }} on
     {{ revision.created_at.strftime('%Y-%m-%d %H:%M') }} UTC. It is read-only.
   </p>
 

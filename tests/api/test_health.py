@@ -13,7 +13,13 @@ def test_health_reports_the_running_version(client):
     assert response.status_code == 200
 
     body = response.json()
-    assert set(body) == {"status", "version", "version_name", "schema_version"}
+    assert set(body) == {
+        "status",
+        "version",
+        "version_name",
+        "schema_version",
+        "auth_configured",
+    }
     assert body["status"] == "ok"
 
     # The whole point of the endpoint: a running container must report the

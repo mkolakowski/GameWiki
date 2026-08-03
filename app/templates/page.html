@@ -15,7 +15,11 @@
   {% endif %}
 
   <div class="actions">
-    <a class="button button--primary" href="/w/{{ page.slug }}/edit">Edit</a>
+    {% if user %}
+      <a class="button button--primary" href="/w/{{ page.slug }}/edit">Edit</a>
+    {% else %}
+      <a class="button" href="/auth/login?next=/w/{{ page.slug }}/edit">Sign in to edit</a>
+    {% endif %}
     <a class="button" href="/w/{{ page.slug }}/history">History</a>
   </div>
 

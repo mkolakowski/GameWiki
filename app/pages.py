@@ -9,10 +9,11 @@ over them — status codes, response shapes, and ETags.
 
 from datetime import datetime
 
-from fastapi import APIRouter, Header, HTTPException, Response, status
+from fastapi import APIRouter, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from app import repository as repo
+from app.auth import require_user
 
 router = APIRouter(prefix="/pages", tags=["pages"])
 
@@ -45,6 +46,7 @@ class RevisionSummary(BaseModel):
     revision: int
     title: str
     created_at: datetime
+    author: str | None = None
 
 
 class Revision(RevisionSummary):
@@ -79,9 +81,10 @@ def list_pages() -> list[dict]:
 
 
 @router.post("", response_model=Page, status_code=status.HTTP_201_CREATED)
-def create_page(payload: PageCreate, response: Response) -> dict:
+def create_page(payload: PageCreate, request: Request, response: Response) -> dict:
+    author = require_user(request)
     try:
-        page = repo.create_page(payload.slug, payload.title, payload.body)
+        page = repo.create_page(payload.slug, payload.title, payload.body, author["id"])
     except repo.SlugTaken:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -107,6 +110,7 @@ def get_page(slug: str, response: Response) -> dict:
 def update_page(
     slug: str,
     payload: PageUpdate,
+    request: Request,
     response: Response,
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> dict:
@@ -116,10 +120,11 @@ def update_page(
     read, otherwise the edit is rejected as a conflict — this is how two
     editors racing on the same page avoid silently clobbering each other.
     """
+    author = require_user(request)
     expected = _parse_if_match(if_match) if if_match is not None else None
 
     try:
-        page = repo.update_page(slug, payload.title, payload.body, expected)
+        page = repo.update_page(slug, payload.title, payload.body, expected, author["id"])
     except repo.PageNotFound:
         raise _NO_PAGE from None
     except repo.RevisionConflict as conflict:

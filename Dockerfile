@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir -e ".[dev]"
 
 COPY app ./app
 COPY tests ./tests
+COPY devtools ./devtools
 
 EXPOSE 8000
 

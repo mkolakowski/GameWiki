@@ -13,7 +13,10 @@
       <li>
         <a href="/w/{{ page.slug }}/revisions/{{ revision.revision }}">
           <span>rev {{ revision.revision }} &mdash; {{ revision.title }}</span>
-          <span class="row-meta">{{ revision.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+          <span class="row-meta">
+            {{ revision.author or "unknown" }} &middot;
+            {{ revision.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+          </span>
         </a>
       </li>
     {% endfor %}

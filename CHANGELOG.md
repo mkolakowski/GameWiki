@@ -13,6 +13,113 @@ and the git commit subject.
 
 ---
 
+## [0.7.0] - 2026-08-03 — "Who Goes There"
+
+**Commit summary:** add Google OIDC sign-in, gate writes on a session, and
+attribute each revision to its author.
+
+**Description:** Closes the last structural hole: until now anyone who could
+reach the app could rewrite any page anonymously. Reads stay public; **writes
+require a signed-in user**, and every revision records who wrote it.
+`SCHEMA_VERSION` goes to `4`.
+
+Identity comes from an OIDC provider, so the app never sees or stores a
+credential — there is no password column. Users are keyed on
+`(issuer, subject)`, not email, because `sub` is only unique within an issuer
+and a Google account can change its address. Display name and email are
+refreshed from the provider on every sign-in.
+
+**The app is provider-agnostic and defaults to Google.** `OIDC_DISCOVERY_URL`
+is read from the environment and falls back to Google's discovery document, so
+production needs only a client ID and secret. See `.env.example` for the Google
+Cloud console setup.
+
+**Testing it required a provider on the internal network.** The suite talks to
+the running container over HTTP, so it can't monkeypatch an auth bypass, and CI
+can't reach Google. CLAUDE.md's Compose rule points at the answer:
+`devtools/fake_oidc.py` runs as the `oidc` service and speaks real OIDC —
+discovery, JWKS, code exchange, RS256-signed id_token — so the app runs its
+genuine Authlib path. It approves every request without asking anyone anything,
+which is exactly what a test provider should do, and it must never be deployed.
+**What this cannot prove is that sign-in works against Google**: the stub is
+deliberately permissive, so a check Google enforces and the app skips would go
+unnoticed. Real-Google verification is manual and has not been done.
+
+### Fixed a real bug found by accident
+
+Recreating the `oidc` container mid-session produced a **500 on every
+sign-in**: `BadSignatureError`. Authlib caches the provider's JWK set on the
+client and never expires it, so once the signing key changed, no id_token would
+verify again until the process restarted.
+
+This is not a stub artifact — **Google rotates its signing keys routinely**, so
+the same wedge would eventually hit production. The authorization code is
+already spent by the time verification fails, so the failing attempt can't be
+salvaged; the callback now catches the JOSE error, force-refreshes the key set
+so the *next* attempt succeeds, and shows a retry link instead of a traceback.
+Verified by hand: after a rotation, attempt 1 returns a clean 400 and attempt 2
+signs in.
+
+### Added
+
+- `app/auth.py` — `/auth/login`, `/auth/callback`, `/auth/logout`, plus
+  `current_user` and `require_user`. `?next=` is restricted to same-site paths
+  so a crafted link can't bounce a signed-in user to another origin.
+- `app/migrations/004_create_users.sql` — `users` (unique on
+  `(issuer, subject)`) and a nullable `page_revisions.author_id` with
+  `ON DELETE SET NULL`, so deleting a user never deletes wiki history.
+  Revisions written before this migration show as "unknown".
+- Session cookie via Starlette `SessionMiddleware`, `SameSite=Lax`, and
+  `Secure` when `SESSION_HTTPS_ONLY` is set.
+- `devtools/fake_oidc.py` and the `oidc` Compose service, with
+  `/_test/identity` to choose who signs in and `/_test/rotate_key` to simulate
+  a key rotation.
+- Author shown in the history list, on the revision view, and returned as
+  `author` on both revision API shapes.
+- Nav shows the signed-in user with a Sign out link, or Sign in with Google.
+  Edit and New page become sign-in prompts when anonymous.
+- A browser hitting a write path gets a 303 to sign-in; an API client gets a
+  JSON 401. A raw 401 is a dead end for someone who just clicked Edit, but
+  redirecting an API client to an HTML page would be worse.
+- `auth_configured` on `/health`.
+- `tests/api/test_auth.py` — 18 tests: the write gate on both surfaces,
+  anonymous reads still working, redirect-vs-JSON behaviour, sign-out,
+  same-site `next` enforcement, per-revision authorship across two users,
+  identity stability when a display name changes, a hostile display name
+  escaped in the history and nav, and recovery from a key rotation.
+- Dependencies: `authlib`, `itsdangerous`; `httpx` moved to a runtime dep.
+
+### Changed
+
+- `app/version.py`: `APP_VERSION` `0.6.0` → `0.7.0`, `APP_VERSION_NAME` →
+  `"Who Goes There"`, `SCHEMA_VERSION` `3` → `4`.
+- **Breaking for API clients:** `POST /pages` and `PUT /pages/{slug}` now
+  return **401** without a session. Anonymous scripts against this API stop
+  working.
+- Response shapes gained fields: `/health` has `auth_configured`, and both
+  revision shapes have `author`. Clients asserting exact key sets need
+  updating.
+- `GET /pages/{slug}/revisions/{n}` now actually reports its author — the query
+  wasn't joining `users`, so it returned `null` even for authored revisions.
+- The rebuild command is now `docker compose up -d --build` (three services).
+  Updated in CLAUDE.md and CI.
+- `CLAUDE.md`: the Compose-services rule gained an identity-provider exception
+  describing this shape.
+
+### Known gaps
+
+- **CSRF relies on `SameSite=Lax` alone** — there are no CSRF tokens on the
+  edit forms. Lax keeps the session cookie off cross-site POSTs, which covers
+  the common case, but a token is the belt-and-braces answer.
+- **No authorization, only authentication.** Any signed-in Google account can
+  edit any page. There are no roles, no allowlist, and no page protection.
+- Sign-out clears the local session only; the Google session is untouched.
+- Sessions are unsigned-out by a restart unless `SESSION_SECRET` is set.
+- Manual browser sign-in against the stub needs `127.0.0.1 oidc` in
+  `/etc/hosts`, since the authorize URL uses the internal Compose hostname.
+
+---
+
 ## [0.6.0] - 2026-08-03 — "The Red Thread"
 
 **Commit summary:** render page bodies as markdown, resolve `[[wiki links]]`
