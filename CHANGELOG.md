@@ -13,6 +13,87 @@ and the git commit subject.
 
 ---
 
+## [0.9.0] - 2026-08-03 — "The Key Ring"
+
+**Commit summary:** add the admin accounts screen, an `ADMIN_EMAILS` bootstrap,
+and an audit trail for role changes.
+
+**Description:** 0.8.0 introduced the admin role but nothing to do with it —
+changing anyone's role meant `UPDATE users SET role = ...` by hand. `/admin/users`
+now lists every account with its last-seen time and role, and changes roles from
+the browser. Every change is recorded. `SCHEMA_VERSION` goes to `6`.
+
+**Admins are now bootstrapped deliberately.** `ADMIN_EMAILS` names accounts that
+are always admin. The old rule — first account on a fresh instance becomes
+admin — remains as a fallback, but on a public instance that could be a
+passer-by, so an explicit list is the better answer. It also made the admin
+tests deterministic: "who is admin" no longer depends on who signed in first.
+
+Two guards, both in the repository layer so any future caller inherits them:
+
+- **The last admin can't be demoted.** An instance with no admin can never hand
+  the role back out without database access.
+- **Self-demotion needs explicit confirmation** — a tick box on your own row.
+  Losing your own admin rights shouldn't be one careless click. The actor's
+  session is updated in place afterwards, so they aren't left holding a stale
+  admin cookie.
+
+### Fixed a design flaw the tests exposed
+
+The first version of this screen was **nearly useless**, and the test suite
+caught it: a manual promotion was silently undone at the promoted person's next
+sign-in, because 0.8.0 recomputes the role from the allowlist on every sign-in.
+Since anyone on the allowlist is already an editor, the screen could only ever
+demote people.
+
+`users.role_source` now distinguishes `allowlist` from `manual`. Allowlist-derived
+roles keep tracking `ALLOWED_EMAILS`/`ALLOWED_DOMAINS`, so removing someone still
+revokes access — the property 0.8.0 was built for. Roles an admin set explicitly
+are left alone. This was folded into migration 006 rather than added as a 007,
+since 006 was unreleased; the local development database was patched by hand to
+match, and the whole migration chain was then replayed against a virgin database
+to confirm it applies cleanly from scratch.
+
+Verified end to end: six migrations apply to an empty database with
+`SCHEMA_VERSION` matching, `/health` reports `0.9.0` / `schema_version: 6`,
+`pytest -q` passes 119 tests (up from 105), ruff clean.
+
+### Added
+
+- `app/admin.py` — `GET /admin/users` and `POST /admin/users/{id}/role`,
+  admin-only.
+- `app/templates/admin_users.html` — accounts table with a per-row role select,
+  a confirm box on your own row, and the recent role-change log.
+- `app/migrations/006_create_role_changes.sql` — the `role_changes` audit table
+  and `users.role_source`. Actor and target labels are denormalised alongside
+  the foreign keys so an audit record stays readable after an account is
+  deleted.
+- `ADMIN_EMAILS` config and `require_admin()`.
+- `repo.list_users`, `repo.set_user_role`, `repo.recent_role_changes`, and the
+  `UserNotFound` / `InvalidRole` / `LastAdminProtected` errors.
+- An Accounts link in the nav, shown only to admins.
+- `tests/api/test_admin.py` — 14 tests: access control for editor, reader, and
+  anonymous; promotion and its effect at next sign-in; unknown account and
+  invalid role; both guards; the audit record naming who did what; and a
+  hostile display name escaped in the table and the log.
+
+### Changed
+
+- `app/version.py`: `APP_VERSION` `0.8.0` → `0.9.0`, `APP_VERSION_NAME` →
+  `"The Key Ring"`, `SCHEMA_VERSION` `5` → `6`.
+- `repo.upsert_user` takes `is_admin` and respects `role_source`.
+
+### Known gaps
+
+- **Role changes still take effect at next sign-in** for everyone except the
+  admin making the change, because the role is snapshotted into the session. A
+  demoted user keeps their access until their session ends. Checking the role
+  per request would fix it at the cost of a query per write.
+- No way to delete an account or revoke a live session from the screen.
+- Still no CSRF tokens, and still unverified against real Google.
+
+---
+
 ## [0.8.0] - 2026-08-03 — "The Guest List"
 
 **Commit summary:** add an edit allowlist and user roles, so authentication

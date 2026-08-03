@@ -17,6 +17,9 @@ services:
       # Who may edit. Both empty means any account that can sign in.
       ALLOWED_EMAILS: ada@example.com,grace@example.com
       ALLOWED_DOMAINS: allowed.example
+      # Always-admin accounts, so the instance has a deliberate admin
+      # rather than whoever signed in first.
+      ADMIN_EMAILS: ada@example.com
       OIDC_TEST_BASE_URL: http://oidc:9000
     depends_on:
       db:

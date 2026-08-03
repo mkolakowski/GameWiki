@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Accounts &mdash; GameWiki{% endblock %}
+
+{% block content %}
+  <h1>Accounts</h1>
+  <p class="meta">{{ users|length }} account{{ '' if users|length == 1 else 's' }}. Roles take effect the next time that person signs in.</p>
+
+  {% if error %}
+    <p class="banner">{{ error }}</p>
+  {% endif %}
+
+  <table class="admin-table">
+    <thead>
+      <tr><th>Account</th><th>Last seen</th><th>Role</th></tr>
+    </thead>
+    <tbody>
+      {% for account in users %}
+        <tr>
+          <td>
+            <strong>{{ account.name }}</strong>
+            {% if account.email %}<div class="row-meta">{{ account.email }}</div>{% endif %}
+          </td>
+          <td class="row-meta">{{ account.last_seen_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+          <td>
+            <form method="post" action="/admin/users/{{ account.id }}/role" class="role-form">
+              <label class="visually-hidden" for="role-{{ account.id }}">Role for {{ account.name }}</label>
+              <select id="role-{{ account.id }}" name="role">
+                {% for role in roles %}
+                  <option value="{{ role }}" {% if role == account.role %}selected{% endif %}>{{ role }}</option>
+                {% endfor %}
+              </select>
+              {% if account.id == user.id %}
+                <label class="confirm">
+                  <input type="checkbox" name="confirm" value="yes">
+                  I mean it
+                </label>
+              {% endif %}
+              <button type="submit">Save</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <section class="backlinks">
+    <h2>Recent role changes</h2>
+    {% if changes %}
+      <ul>
+        {% for change in changes %}
+          <li>
+            {{ change.actor_label }} changed {{ change.target_label }}
+            from {{ change.old_role }} to {{ change.new_role }}
+            &middot; <span class="row-meta">{{ change.changed_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">No role changes recorded yet.</p>
+    {% endif %}
+  </section>
+{% endblock %}

@@ -345,3 +345,67 @@ a {
     color: var(--muted);
     font-size: 15px;
 }
+
+/* --- admin ------------------------------------------------------------- */
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.admin-table th {
+    padding: 8px 4px;
+    border-bottom: 1px solid var(--rule);
+    color: var(--muted);
+    font-size: 13px;
+    text-align: left;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.admin-table td {
+    padding: 12px 4px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: middle;
+}
+
+.role-form {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.role-form select {
+    width: auto;
+    min-width: 120px;
+}
+
+.role-form .confirm {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    /* Dense inline control inside a table row — 32px minimum, not 44px. */
+    min-height: 32px;
+    color: var(--danger);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.role-form .confirm input {
+    width: auto;
+    min-height: 0;
+    /* The label is part of the target, keeping the whole control comfortable. */
+    width: 20px;
+    height: 20px;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}

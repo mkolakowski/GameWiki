@@ -42,6 +42,12 @@ def _csv_set(name: str) -> set[str]:
 # out, but reported by /health so it is not a silent default.
 ALLOWED_EMAILS = _csv_set("ALLOWED_EMAILS")
 ALLOWED_DOMAINS = _csv_set("ALLOWED_DOMAINS")
+
+# Accounts that are always admin. This is how an instance bootstraps one
+# deliberately, rather than relying on whoever happened to sign in first —
+# which on a public instance could be a passer-by.
+ADMIN_EMAILS = _csv_set("ADMIN_EMAILS")
+
 EDITOR_ROLES = {"editor", "admin"}
 
 # Sessions survive a restart only if this is set explicitly. An ephemeral
@@ -68,6 +74,10 @@ def is_configured() -> bool:
 
 def allowlist_is_configured() -> bool:
     return bool(ALLOWED_EMAILS or ALLOWED_DOMAINS)
+
+
+def email_is_admin(email: str | None) -> bool:
+    return bool(email) and email.lower() in ADMIN_EMAILS
 
 
 def email_is_allowed(email: str | None) -> bool:
@@ -113,6 +123,17 @@ def require_editor(request: Request) -> dict:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="your account does not have edit access on this wiki",
+        )
+    return user
+
+
+def require_admin(request: Request) -> dict:
+    """A signed-in admin, or 401/403."""
+    user = require_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="only an admin can manage accounts on this wiki",
         )
     return user
 
@@ -174,6 +195,7 @@ async def callback(request: Request):
         email=email,
         name=claims.get("name") or email or "Anonymous",
         allowed=email_is_allowed(email),
+        is_admin=email_is_admin(email),
     )
 
     # The role is snapshotted into the session, so a role change made in the

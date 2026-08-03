@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import auth, pages, web
+from app import admin, auth, pages, web
 from app.db import pool, run_migrations
 from app.version import APP_VERSION, APP_VERSION_NAME, SCHEMA_VERSION
 
@@ -45,6 +45,7 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(auth.router)
 app.include_router(pages.router)
+app.include_router(admin.router)
 app.include_router(web.router)
 
 

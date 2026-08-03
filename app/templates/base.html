@@ -13,6 +13,7 @@
       <a href="/">All pages</a>
       {% if user %}
         {% if user.role in ("editor", "admin") %}<a href="/new">New page</a>{% endif %}
+        {% if user.role == "admin" %}<a href="/admin/users">Accounts</a>{% endif %}
         <span class="nav-user" title="{{ user.email }} ({{ user.role }})">{{ user.name }}</span>
         <a href="/auth/logout">Sign out</a>
       {% else %}
