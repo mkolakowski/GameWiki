@@ -17,6 +17,7 @@ from authlib.integrations.starlette_client import OAuth, OAuthError
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from app import csrf
 from app import repository as repo
 
 try:  # Authlib >= 1.6 delegates JOSE to joserfc.
@@ -198,6 +199,10 @@ async def callback(request: Request):
         is_admin=email_is_admin(email),
     )
 
+    # The session's owner just changed, so retire any token minted before
+    # authentication rather than carrying it across the boundary.
+    csrf.rotate(request)
+
     # The role is snapshotted into the session, so a role change made in the
     # database takes effect on the user's next sign-in, not immediately.
     request.session["user"] = {
@@ -214,4 +219,5 @@ async def callback(request: Request):
 def logout(request: Request):
     """Clears the local session only — the Google session is untouched."""
     request.session.pop("user", None)
+    csrf.rotate(request)
     return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)

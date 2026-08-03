@@ -36,8 +36,9 @@ app = FastAPI(title="GameWiki", version=APP_VERSION, lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=auth.SESSION_SECRET,
-    # Lax keeps the session cookie off cross-site POSTs, which is what stands
-    # in for CSRF tokens on the edit forms. See the gap noted in CHANGELOG 0.7.0.
+    # Lax keeps the session cookie off cross-site POSTs. Since 0.11.0 it is the
+    # outer of two layers rather than the only one — the forms also carry a
+    # token, so loosening this to "none" would not by itself open up CSRF.
     same_site="lax",
     https_only=os.getenv("SESSION_HTTPS_ONLY", "").lower() in {"1", "true", "yes"},
 )

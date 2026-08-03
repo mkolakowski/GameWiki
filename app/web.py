@@ -13,7 +13,7 @@ from fastapi import APIRouter, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app import markup
+from app import csrf, markup
 from app import repository as repo
 from app.auth import current_user, require_editor
 from app.version import APP_VERSION, APP_VERSION_NAME
@@ -22,8 +22,14 @@ router = APIRouter(tags=["web"])
 
 
 def _user_context(request: Request) -> dict:
-    """Every template needs to know who is signed in, for the nav."""
-    return {"user": current_user(request)}
+    """Every template needs to know who is signed in, for the nav.
+
+    The CSRF token rides along here so no form has to remember to ask for it.
+    It is minted only for signed-in users — anonymous visitors see no form that
+    POSTs, and issuing one would hand every reader a session cookie for nothing.
+    """
+    user = current_user(request)
+    return {"user": user, "csrf_token": csrf.issue(request) if user else None}
 
 
 templates = Jinja2Templates(directory="app/templates", context_processors=[_user_context])
@@ -33,6 +39,11 @@ templates.env.globals["app_version_name"] = APP_VERSION_NAME
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 _NO_PAGE = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no such page")
+
+STALE_FORM = (
+    "This form has expired or did not come from this site, so nothing was saved. "
+    "Your text is below — submitting again from this page will work."
+)
 
 
 def _see_other(url: str) -> RedirectResponse:
@@ -90,17 +101,23 @@ def create_page(
     slug: str = Form(...),
     title: str = Form(...),
     body: str = Form(""),
+    csrf_token: str = Form(default=""),
 ):
     author = require_editor(request)
 
-    def reject(message: str):
+    def reject(message: str, status_code: int = status.HTTP_400_BAD_REQUEST):
         # Re-render with the user's text intact rather than losing their draft.
         return templates.TemplateResponse(
             request,
             "new.html",
             {"slug": slug, "title": title, "body": body, "error": message},
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status_code,
         )
+
+    if not csrf.is_valid(request, csrf_token):
+        # The write is refused either way; handing the draft back costs the
+        # attacker nothing and saves a legitimate editor whose form went stale.
+        return reject(STALE_FORM, status.HTTP_403_FORBIDDEN)
 
     if not SLUG_RE.match(slug):
         return reject(
@@ -163,8 +180,26 @@ def save_page(
     revision: int = Form(...),
     title: str = Form(...),
     body: str = Form(""),
+    csrf_token: str = Form(default=""),
 ):
     author = require_editor(request)
+
+    if not csrf.is_valid(request, csrf_token):
+        # Same reasoning as /new: refuse the write, keep the draft.
+        return templates.TemplateResponse(
+            request,
+            "edit.html",
+            {
+                "slug": slug,
+                "title": title,
+                "body": body,
+                "revision": revision,
+                "conflict": None,
+                "error": STALE_FORM,
+            },
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
     try:
         repo.update_page(slug, title, body, expected_revision=revision, author_id=author["id"])
     except repo.PageNotFound:

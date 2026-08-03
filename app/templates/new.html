@@ -9,6 +9,8 @@
   {% endif %}
 
   <form method="post" action="/new">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
     <div class="field">
       <label for="slug">Slug</label>
       <input id="slug" name="slug" value="{{ slug }}" maxlength="200"

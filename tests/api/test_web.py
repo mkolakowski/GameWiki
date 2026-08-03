@@ -63,10 +63,11 @@ def test_edit_form_for_unknown_page_is_404(client, slug):
     assert client.get(f"/w/{slug}/edit").status_code == 404
 
 
-def test_save_redirects_and_persists(client, page, slug):
-    response = client.post(
+def test_save_redirects_and_persists(client, page, slug, form_post):
+    response = form_post(
+        client,
         f"/w/{slug}/edit",
-        data={"revision": "1", "title": "Outer Wilds (2019)", "body": "22 minutes."},
+        {"revision": "1", "title": "Outer Wilds (2019)", "body": "22 minutes."},
     )
 
     assert response.status_code == 303
@@ -78,12 +79,12 @@ def test_save_redirects_and_persists(client, page, slug):
     assert saved["revision"] == 2
 
 
-def test_save_from_a_stale_revision_is_409_and_keeps_the_draft(client, page, slug):
+def test_save_from_a_stale_revision_is_409_and_keeps_the_draft(client, page, slug, form_post):
     """A conflict must not throw away what the editor typed."""
-    client.post(f"/w/{slug}/edit", data={"revision": "1", "title": "Theirs", "body": "theirs"})
+    form_post(client, f"/w/{slug}/edit", {"revision": "1", "title": "Theirs", "body": "theirs"})
 
-    response = client.post(
-        f"/w/{slug}/edit", data={"revision": "1", "title": "Mine", "body": "my draft"}
+    response = form_post(
+        client, f"/w/{slug}/edit", {"revision": "1", "title": "Mine", "body": "my draft"}
     )
 
     assert response.status_code == 409
@@ -96,8 +97,8 @@ def test_save_from_a_stale_revision_is_409_and_keeps_the_draft(client, page, slu
     assert client.get(f"/pages/{slug}").json()["title"] == "Theirs"
 
 
-def test_history_lists_revisions_newest_first(client, page, slug):
-    client.post(f"/w/{slug}/edit", data={"revision": "1", "title": "Second", "body": "b2"})
+def test_history_lists_revisions_newest_first(client, page, slug, form_post):
+    form_post(client, f"/w/{slug}/edit", {"revision": "1", "title": "Second", "body": "b2"})
 
     response = client.get(f"/w/{slug}/history")
 
@@ -107,8 +108,8 @@ def test_history_lists_revisions_newest_first(client, page, slug):
     assert response.text.index("rev 2") < response.text.index("rev 1")
 
 
-def test_view_a_historical_revision(client, page, slug):
-    client.post(f"/w/{slug}/edit", data={"revision": "1", "title": "Overwritten", "body": "new"})
+def test_view_a_historical_revision(client, page, slug, form_post):
+    form_post(client, f"/w/{slug}/edit", {"revision": "1", "title": "Overwritten", "body": "new"})
 
     response = client.get(f"/w/{slug}/revisions/1")
 
@@ -130,24 +131,26 @@ def test_new_page_form_renders(client):
     assert "New page" in response.text
 
 
-def test_create_via_form_redirects(client, slug):
-    response = client.post("/new", data={"slug": slug, "title": "Hades", "body": "Roguelike."})
+def test_create_via_form_redirects(client, slug, form_post):
+    response = form_post(client, "/new", {"slug": slug, "title": "Hades", "body": "Roguelike."})
 
     assert response.status_code == 303
     assert response.headers["location"] == f"/w/{slug}"
     assert client.get(f"/pages/{slug}").json()["title"] == "Hades"
 
 
-def test_create_via_form_rejects_a_duplicate_slug_and_keeps_the_draft(client, page, slug):
-    response = client.post("/new", data={"slug": slug, "title": "Clash", "body": "my draft"})
+def test_create_via_form_rejects_a_duplicate_slug_and_keeps_the_draft(
+    client, page, slug, form_post
+):
+    response = form_post(client, "/new", {"slug": slug, "title": "Clash", "body": "my draft"})
 
     assert response.status_code == 400
     assert "already exists" in response.text
     assert "my draft" in response.text
 
 
-def test_create_via_form_rejects_a_malformed_slug(client):
-    response = client.post("/new", data={"slug": "Not A Slug", "title": "Nope"})
+def test_create_via_form_rejects_a_malformed_slug(client, form_post):
+    response = form_post(client, "/new", {"slug": "Not A Slug", "title": "Nope"})
 
     assert response.status_code == 400
     assert "not a valid slug" in response.text

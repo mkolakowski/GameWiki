@@ -8,10 +8,27 @@ code — so a stale container fails them. Rebuild before running:
 """
 
 import os
+import re
 from html.parser import HTMLParser
 
 import httpx
 import pytest
+
+CSRF_FIELD_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
+
+
+def csrf_token(client: httpx.Client, path: str = "/new") -> str:
+    """This session's CSRF token, scraped from a rendered form.
+
+    A browser reads this out of the hidden field, so the suite does too rather
+    than reaching into the signed session cookie — that way a template which
+    forgets the field breaks the tests that depend on it.
+    """
+    response = client.get(path)
+    match = CSRF_FIELD_RE.search(response.text)
+    assert match, f"no csrf_token field at {path} (HTTP {response.status_code})"
+    return match.group(1)
+
 
 # Tags that should never appear in rendered page content. `form`, `meta`, and
 # `link` are omitted deliberately — the app's own chrome uses them.
@@ -97,6 +114,39 @@ def sign_in(
 
     response = client.get("/auth/login", params={"next": "/"}, follow_redirects=True)
     assert response.status_code == 200, f"sign-in failed: {response.status_code} {response.text}"
+
+
+@pytest.fixture
+def read_csrf_token():
+    """Scrape a client's current token, the way a browser reads the field."""
+    return csrf_token
+
+
+@pytest.fixture
+def sign_in_again(oidc_base_url: str):
+    """Re-authenticate an existing client, for session-boundary tests."""
+
+    def again(client: httpx.Client, **kwargs) -> None:
+        sign_in(client, oidc_base_url, **kwargs)
+
+    return again
+
+
+@pytest.fixture
+def form_post():
+    """Submit an HTML form the way a browser would, hidden token included.
+
+    Routes that refuse before the token is even looked at — anonymous or
+    non-editor callers — are posted to directly in the tests instead, since
+    attaching a token there would test nothing.
+    """
+
+    def post(client: httpx.Client, url: str, data: dict, *, token_from: str = "/new"):
+        payload = {**data}
+        payload.setdefault("csrf_token", csrf_token(client, token_from))
+        return client.post(url, data=payload)
+
+    return post
 
 
 @pytest.fixture

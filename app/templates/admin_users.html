@@ -23,6 +23,7 @@
           <td class="row-meta">{{ account.last_seen_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
           <td>
             <form method="post" action="/admin/users/{{ account.id }}/role" class="role-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <label class="visually-hidden" for="role-{{ account.id }}">Role for {{ account.name }}</label>
               <select id="role-{{ account.id }}" name="role">
                 {% for role in roles %}

@@ -122,17 +122,19 @@ def _role_of(admin, user_id: int) -> str:
 # --- changing roles --------------------------------------------------------
 
 
-def test_promoting_a_reader_to_editor(admin, reader, reader_name):
+def test_promoting_a_reader_to_editor(admin, reader, reader_name, form_post):
     target = _id_of(admin, reader_name)
     assert _role_of(admin, target) == "reader"
 
-    response = admin.post(f"/admin/users/{target}/role", data={"role": "editor"})
+    response = form_post(
+        admin, f"/admin/users/{target}/role", {"role": "editor"}, token_from="/admin/users"
+    )
 
     assert response.status_code == 303
     assert _role_of(admin, target) == "editor"
 
 
-def test_a_promotion_takes_effect_on_the_next_sign_in(admin, sign_in_as):
+def test_a_promotion_takes_effect_on_the_next_sign_in(admin, sign_in_as, form_post):
     promo_name = f"Promo Target {uuid4().hex[:8]}"
     subject = f"google-oauth2|promo-{uuid4().hex[:8]}"
     email = f"promo-{uuid4().hex[:8]}@nope.example"
@@ -140,7 +142,12 @@ def test_a_promotion_takes_effect_on_the_next_sign_in(admin, sign_in_as):
     before = outsider.post("/pages", json={"slug": f"p-{uuid4().hex[:8]}", "title": "x"})
     assert before.status_code == 403
 
-    admin.post(f"/admin/users/{_id_of(admin, promo_name)}/role", data={"role": "editor"})
+    form_post(
+        admin,
+        f"/admin/users/{_id_of(admin, promo_name)}/role",
+        {"role": "editor"},
+        token_from="/admin/users",
+    )
 
     # Two things are under test. The old session still carries the old role, so
     # a fresh sign-in is needed; and that sign-in must not let the allowlist
@@ -150,14 +157,20 @@ def test_a_promotion_takes_effect_on_the_next_sign_in(admin, sign_in_as):
     assert response.status_code == 201
 
 
-def test_an_unknown_account_is_404(admin):
-    assert admin.post("/admin/users/99999999/role", data={"role": "editor"}).status_code == 404
+def test_an_unknown_account_is_404(admin, form_post):
+    response = form_post(
+        admin, "/admin/users/99999999/role", {"role": "editor"}, token_from="/admin/users"
+    )
+
+    assert response.status_code == 404
 
 
-def test_an_invalid_role_is_rejected(admin, reader, reader_name):
+def test_an_invalid_role_is_rejected(admin, reader, reader_name, form_post):
     target = _id_of(admin, reader_name)
 
-    response = admin.post(f"/admin/users/{target}/role", data={"role": "superuser"})
+    response = form_post(
+        admin, f"/admin/users/{target}/role", {"role": "superuser"}, token_from="/admin/users"
+    )
 
     assert response.status_code == 400
     assert "is not a role" in response.text
@@ -167,41 +180,56 @@ def test_an_invalid_role_is_rejected(admin, reader, reader_name):
 # --- guards ----------------------------------------------------------------
 
 
-def test_self_demotion_needs_an_explicit_confirmation(admin, sign_in_as):
+def test_self_demotion_needs_an_explicit_confirmation(admin, sign_in_as, form_post):
     """Losing your own admin rights must never be one careless click."""
     # A second admin, so the last-admin guard isn't what's being tested here.
     name = f"Second Admin {uuid4().hex[:8]}"
     subject = f"google-oauth2|second-{uuid4().hex[:8]}"
     sign_in_as(subject, "second@allowed.example", name)
     me = _id_of(admin, name)
-    admin.post(f"/admin/users/{me}/role", data={"role": "admin"})
+    form_post(admin, f"/admin/users/{me}/role", {"role": "admin"}, token_from="/admin/users")
 
     # The role is snapshotted into the session, so sign in again to hold it.
     second = sign_in_as(subject, "second@allowed.example", name)
-    unconfirmed = second.post(f"/admin/users/{me}/role", data={"role": "editor"})
+    unconfirmed = form_post(
+        second, f"/admin/users/{me}/role", {"role": "editor"}, token_from="/admin/users"
+    )
 
     assert unconfirmed.status_code == 400
     assert "remove your own admin access" in unconfirmed.text
     assert _role_of(admin, me) == "admin"
 
-    confirmed = second.post(f"/admin/users/{me}/role", data={"role": "editor", "confirm": "yes"})
+    confirmed = form_post(
+        second,
+        f"/admin/users/{me}/role",
+        {"role": "editor", "confirm": "yes"},
+        token_from="/admin/users",
+    )
     assert confirmed.status_code == 303
     assert _role_of(admin, me) == "editor"
 
 
-def test_the_last_admin_cannot_be_demoted(admin):
+def test_the_last_admin_cannot_be_demoted(admin, form_post):
     """An instance with no admin can never hand the role back out."""
     me = next(u for u in _users(admin) if u["name"] == "Ada Lovelace")
 
     # Reduce to exactly one admin so the guard is the thing under test.
     for account in _users(admin):
         if account["role"] == "admin" and account["id"] != me["id"]:
-            admin.post(f"/admin/users/{account['id']}/role", data={"role": "editor"})
+            form_post(
+                admin,
+                f"/admin/users/{account['id']}/role",
+                {"role": "editor"},
+                token_from="/admin/users",
+            )
 
     assert [u["role"] for u in _users(admin)].count("admin") == 1
 
-    response = admin.post(
-        f"/admin/users/{me['id']}/role", data={"role": "editor", "confirm": "yes"}
+    response = form_post(
+        admin,
+        f"/admin/users/{me['id']}/role",
+        {"role": "editor", "confirm": "yes"},
+        token_from="/admin/users",
     )
 
     assert response.status_code == 409
@@ -212,9 +240,9 @@ def test_the_last_admin_cannot_be_demoted(admin):
 # --- audit -----------------------------------------------------------------
 
 
-def test_a_role_change_is_recorded_with_who_did_it(admin, reader, reader_name):
+def test_a_role_change_is_recorded_with_who_did_it(admin, reader, reader_name, form_post):
     target = _id_of(admin, reader_name)
-    admin.post(f"/admin/users/{target}/role", data={"role": "editor"})
+    form_post(admin, f"/admin/users/{target}/role", {"role": "editor"}, token_from="/admin/users")
 
     html = admin.get("/admin/users", headers=HTML).text
 
@@ -222,7 +250,7 @@ def test_a_role_change_is_recorded_with_who_did_it(admin, reader, reader_name):
     assert "from reader to editor" in html
 
 
-def test_the_accounts_screen_escapes_hostile_names(admin, sign_in_as, assert_safe_html):
+def test_the_accounts_screen_escapes_hostile_names(admin, sign_in_as, assert_safe_html, form_post):
     """Display names come from the provider and land in a table and an audit log."""
     hostile = "<img src=x onerror=alert(1)>"
     sign_in_as(
@@ -231,6 +259,6 @@ def test_the_accounts_screen_escapes_hostile_names(admin, sign_in_as, assert_saf
         hostile,
     )
     target = _id_of(admin, hostile)
-    admin.post(f"/admin/users/{target}/role", data={"role": "editor"})
+    form_post(admin, f"/admin/users/{target}/role", {"role": "editor"}, token_from="/admin/users")
 
     assert_safe_html(admin.get("/admin/users", headers=HTML).text)

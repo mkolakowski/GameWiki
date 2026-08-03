@@ -8,6 +8,7 @@ future caller get them too.
 from fastapi import APIRouter, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from app import csrf
 from app import repository as repo
 from app.auth import require_admin
 from app.web import templates
@@ -41,8 +42,13 @@ def set_role(
     user_id: int,
     role: str = Form(...),
     confirm: str = Form(default=""),
+    csrf_token: str = Form(default=""),
 ):
     actor = require_admin(request)
+
+    # No draft to preserve here — the form is a select, not prose — so this
+    # one just refuses.
+    csrf.require(request, csrf_token)
 
     # Demoting yourself is allowed but never a click away — losing your own
     # admin rights is not something to do by accident.

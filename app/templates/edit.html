@@ -5,6 +5,10 @@
   <h1>Editing {{ slug }}</h1>
   <p class="meta">Editing from revision {{ revision }}.</p>
 
+  {% if error %}
+    <p class="banner">{{ error }}</p>
+  {% endif %}
+
   {% if conflict %}
     <p class="banner">
       Someone else saved this page while you were editing &mdash; it moved from
@@ -15,6 +19,7 @@
 
   <form method="post" action="/w/{{ slug }}/edit">
     <input type="hidden" name="revision" value="{{ revision }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
     <div class="field">
       <label for="title">Title</label>

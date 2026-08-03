@@ -13,6 +13,98 @@ and the git commit subject.
 
 ---
 
+## [0.11.0] - 2026-08-03 — "Belt And Braces"
+
+**Commit summary:** add CSRF tokens to the edit, create, and role-change forms,
+so `SameSite=Lax` is no longer the only thing standing between a signed-in
+editor and a cross-site write.
+
+**Description:** Named as a known gap in every release since 0.7.0. `Lax` keeps
+the session cookie off cross-site POSTs and does genuinely cover the common
+case — but it is a single control enforced entirely by the browser. An older
+browser without Lax-by-default, or a future deployment that loosens the cookie
+to `SameSite=None` to embed the wiki somewhere, removes it silently and with no
+test failing. The token is a second, independent layer that fails closed.
+No schema change; `SCHEMA_VERSION` stays at `7`.
+
+**The JSON API is deliberately left alone, and that exemption was measured
+rather than assumed.** A cross-site HTML form can only send
+`application/x-www-form-urlencoded`, `multipart/form-data`, or `text/plain`.
+All three were fired at `POST /pages` with a well-formed JSON body: all three
+returned 422, and the same body with `application/json` returned 201, so the
+rejection is the content-type gate and not a malformed payload. Reaching those
+routes cross-origin needs a preflighted `fetch`, and no CORS middleware is
+configured. Requiring a token there would break every scripted API client to
+close a hole that isn't open. Those four probes are now tests, so if the gate
+ever moves, the exemption stops being true loudly.
+
+**A refused write hands the draft back.** A stale token re-renders the form
+with the editor's text intact and a fresh token, exactly as the 409 conflict
+path has done since 0.5.0 — the write is refused either way, so this costs an
+attacker nothing and saves an editor whose form went stale. The admin
+role-change form just refuses, since a `select` has no draft to lose.
+
+**Tokens are issued only to signed-in users.** Anonymous visitors see no form
+that POSTs, so minting one would hand every reader a session cookie in exchange
+for nothing; verified that an anonymous `GET /` still sets no cookie at all.
+The token is stable within a session — a per-request token would break the back
+button and a second tab — and is retired on sign-in and sign-out, so one minted
+before the session changed hands cannot be replayed after.
+
+**The new tests were checked against a mutant.** `csrf.is_valid` was replaced
+with `return True`, the stack rebuilt, and the suite re-run: 8 of the 17 new
+tests failed. The other 9 assert the hidden field is present, that the token is
+session-scoped, and the JSON exemption — none of which depend on the validation
+path, so passing was correct. Without that step "17 passing security tests"
+would have been an unverified claim.
+
+Verified end to end: `/health` reports `0.11.0`, `pytest -q` passes 164 tests
+(up from 147), ruff clean. Probed by hand: a forged create returns 403 with the
+draft intact and no page written, the same create with the token returns 303
+and the page exists, and an anonymous read sets no cookie. **Still not seen in
+a real browser**, so the `SameSite` half of the defence remains asserted by
+reasoning rather than observed.
+
+### Added
+
+- `app/csrf.py` — session-backed tokens with `secrets.compare_digest`, plus
+  `rotate()` at the sign-in and sign-out boundaries.
+- A hidden `csrf_token` field on the edit, create, and role-change forms, fed
+  by the template context processor so no form has to remember to ask.
+- `tests/api/test_csrf.py` — 17 tests: the field present on all three forms, no
+  token for anonymous readers, missing and wrong tokens refused on all three
+  writes, the draft preserved on refusal, another session's token rejected,
+  stability within a session, retirement across sign-out, and the four
+  content-type probes the API exemption rests on.
+- `csrf_token` / `form_post` / `read_csrf_token` / `sign_in_again` test
+  helpers.
+
+### Changed
+
+- `app/version.py`: `APP_VERSION` `0.10.0` → `0.11.0`, `APP_VERSION_NAME` →
+  `"Belt And Braces"`. `SCHEMA_VERSION` unchanged at `7`.
+- **Breaking for anything scripting the HTML forms:** `POST /new`,
+  `POST /w/{slug}/edit`, and `POST /admin/users/{id}/role` now return **403**
+  without a valid token. The JSON API is unaffected — a script should use it.
+- 17 existing form-post call sites in `tests/api/test_web.py` and
+  `tests/api/test_admin.py` now go through `form_post`. Sites that are refused
+  before the token is read — anonymous or non-editor callers — still post
+  directly, since attaching a token there would test nothing.
+- `app/main.py`: the `same_site="lax"` comment no longer claims to be the CSRF
+  defence on its own.
+
+### Known gaps
+
+- **A stale token costs a round trip, not just a resubmit** — the re-rendered
+  form is correct, but the editor still has to click Save twice.
+- Tokens live for the whole session with no expiry of their own.
+- The token is not bound to a specific form or action, so it is one token per
+  session rather than per form.
+- Still unverified against real Google, and the `SameSite` layer is still
+  unobserved in an actual browser.
+
+---
+
 ## [0.10.0] - 2026-08-03 — "The Card Catalogue"
 
 **Commit summary:** add Postgres full-text search over page titles and bodies,
