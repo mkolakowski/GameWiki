@@ -7,6 +7,7 @@ domain errors and leaves the translation to the caller.
 
 import psycopg
 
+from app import markup
 from app.db import pool
 
 
@@ -29,6 +30,42 @@ class RevisionConflict(Exception):
         super().__init__(f"expected revision {expected}, current is {current}")
         self.expected = expected
         self.current = current
+
+
+def _sync_links(conn, page_id: int, body: str) -> None:
+    """Rewrite this page's outgoing links. Callers must be inside a transaction."""
+    conn.execute("DELETE FROM page_links WHERE source_id = %s", (page_id,))
+    targets = markup.extract_links(body)
+    if targets:
+        conn.cursor().executemany(
+            "INSERT INTO page_links (source_id, target_slug) VALUES (%s, %s)",
+            [(page_id, target) for target in sorted(targets)],
+        )
+
+
+def existing_slugs(slugs: set[str]) -> set[str]:
+    """Which of these slugs actually have a page — drives red-link styling."""
+    if not slugs:
+        return set()
+
+    with pool.connection() as conn:
+        rows = conn.execute(
+            "SELECT slug FROM pages WHERE slug = ANY(%s)", (sorted(slugs),)
+        ).fetchall()
+
+    return {row["slug"] for row in rows}
+
+
+def backlinks(slug: str) -> list[dict]:
+    """Pages linking here — "what links here". Self-links are excluded."""
+    with pool.connection() as conn:
+        return conn.execute(
+            "SELECT p.slug, p.title FROM page_links l"
+            " JOIN pages p ON p.id = l.source_id"
+            " WHERE l.target_slug = %s AND p.slug <> %s"
+            " ORDER BY p.title",
+            (slug, slug),
+        ).fetchall()
 
 
 def list_pages() -> list[dict]:
@@ -66,6 +103,7 @@ def create_page(slug: str, title: str, body: str) -> dict:
                     " VALUES (%s, 1, %s, %s, %s)",
                     (page["id"], page["title"], page["body"], page["updated_at"]),
                 )
+                _sync_links(conn, page["id"], page["body"])
         except psycopg.errors.UniqueViolation:
             raise SlugTaken(slug) from None
 
@@ -103,6 +141,7 @@ def update_page(slug: str, title: str, body: str, expected_revision: int | None 
             " VALUES (%s, %s, %s, %s, %s)",
             (current["id"], page["revision"], page["title"], page["body"], page["updated_at"]),
         )
+        _sync_links(conn, current["id"], page["body"])
 
     return page
 

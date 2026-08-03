@@ -13,6 +13,95 @@ and the git commit subject.
 
 ---
 
+## [0.6.0] - 2026-08-03 — "The Red Thread"
+
+**Commit summary:** render page bodies as markdown, resolve `[[wiki links]]`
+between pages, and show backlinks.
+
+**Description:** Pages can point at each other, which is what makes a wiki a
+wiki rather than a pile of documents. Bodies render as markdown;
+`[[Page Title]]` resolves to a link, and `[[Page Title|other words]]` changes
+the link text. `SCHEMA_VERSION` goes to `3`.
+
+A link to a page that doesn't exist becomes a **red link** pointing at the
+create form with the slug and title prefilled — the wiki convention where a
+missing link doubles as an invitation to write the page. It turns blue on its
+own the moment someone creates the target, because `page_links.target_slug` is
+deliberately not a foreign key. Each page also lists **what links here**,
+maintained in the same transaction as the write, so removing a link from a body
+removes the backlink.
+
+**Security is the whole risk surface of this bump**, since bodies are
+user-authored and now reach the browser as HTML. Three layers: markdown-it runs
+with `html=False` so raw HTML is escaped rather than passed through; its link
+validator rejects `javascript:`, `vbscript:`, and `data:` destinations; and the
+result goes through nh3 (ammonia) against a safe allowlist. Wiki-link display
+text is escaped before being spliced into markdown source so a crafted label
+can't break out of the link syntax.
+
+**The escaping tests were rewritten mid-implementation.** The first versions
+asserted with substring checks, and seven failed — every one a false alarm: the
+payloads were being correctly escaped, and the assertions couldn't tell
+`<script>` from `&lt;script&gt;`, nor did they expect the
+`rel="noopener noreferrer"` nh3 adds. A substring check is the wrong tool here;
+it fails on safely-escaped text and passes on markup smuggled inside an
+attribute. They now parse the HTML and assert structurally — no dangerous
+element, no `on*` handler, no dangerous URL scheme — via an `assert_safe_html`
+fixture. That auditor was itself checked against five known-bad inputs
+including a tab-obfuscated `java\tscript:` URL, so it can actually fail.
+
+Verified end to end: migration 003 applied and backfilled the link graph for
+pre-existing pages, `/health` reports `0.6.0` / "The Red Thread" /
+`schema_version: 3`, `pytest -q` passes 74 tests (up from 34), ruff clean, and
+the create → red link → target created → link resolves → backlink appears loop
+walked by hand. **Still not seen in a real browser** — none available here — so
+the markdown and red-link styling is asserted in CSS and tests, not looked at.
+
+### Added
+
+- `app/markup.py` — `slugify`, `extract_links`, `resolve_wiki_links`, and
+  `render`, with the sanitising pipeline described above.
+- `app/migrations/003_create_page_links.sql` — `page_links` (`source_id` FK
+  cascade, `target_slug`, indexed on target) plus a SQL backfill of the graph
+  for existing pages.
+- Backlinks section on the page view, omitted when there are none. Self-links
+  are excluded.
+- `GET /new` now accepts `slug` and `title` query params, so red links arrive
+  prefilled.
+- Markdown styling in `base.css` — headings, code, `pre`, blockquotes, tables —
+  and red links styled by href prefix (`a[href^="/new?"]`), which avoids putting
+  raw HTML through the markdown pipeline just to carry a CSS class.
+- `tests/unit/test_markup.py` — 22 tests: slugify cases, link extraction,
+  resolution, and 13 hostile bodies asserted structurally.
+- `tests/api/test_links.py` — 12 tests through the running app: red links, link
+  resolution after target creation, backlink add and removal, markdown
+  rendering, and stored-XSS checks on the page, index, history, and prefilled
+  form.
+- `assert_safe_html` fixture and `audit_html` helper in `tests/conftest.py`.
+- Dependencies: `markdown-it-py`, `nh3`.
+
+### Changed
+
+- `app/version.py`: `APP_VERSION` `0.5.1` → `0.6.0`, `APP_VERSION_NAME` →
+  `"The Red Thread"`, `SCHEMA_VERSION` `2` → `3`.
+- `app/repository.py`: writes sync the link graph in the same transaction; adds
+  `existing_slugs` and `backlinks`.
+- Page bodies are markdown rather than preformatted plain text. **Existing
+  bodies re-render** — leading `#`, `*`, or `_` that used to be literal now has
+  meaning, and single newlines no longer force a line break.
+- Edit and create forms document the `[[link]]` syntax.
+
+### Known gaps
+
+- `markup.slugify` is reimplemented in SQL in migration 003 for the backfill.
+  That copy is frozen; changing the Python rules needs a new migration, not an
+  edit to 003.
+- Non-ASCII link text is dropped rather than transliterated, so `[[Pokémon]]`
+  targets `pok-mon`.
+- No search, no authentication.
+
+---
+
 ## [0.5.1] - 2026-08-03 — "The Turnstile"
 
 **Commit summary:** add the CI workflow and a release-metadata checker.

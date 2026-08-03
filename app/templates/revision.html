@@ -11,7 +11,8 @@
   <h1>{{ revision.title }}</h1>
 
   {% if revision.body %}
-    <div class="prose">{{ revision.body }}</div>
+    {# body_html is sanitised in app.markup.render — never mark raw body safe. #}
+    <div class="prose">{{ body_html|safe }}</div>
   {% else %}
     <p class="empty">This revision is empty.</p>
   {% endif %}

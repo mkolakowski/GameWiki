@@ -8,7 +8,8 @@
   </p>
 
   {% if page.body %}
-    <div class="prose">{{ page.body }}</div>
+    {# body_html is sanitised in app.markup.render — never mark raw body safe. #}
+    <div class="prose">{{ body_html|safe }}</div>
   {% else %}
     <p class="empty">This page is empty.</p>
   {% endif %}
@@ -17,4 +18,15 @@
     <a class="button button--primary" href="/w/{{ page.slug }}/edit">Edit</a>
     <a class="button" href="/w/{{ page.slug }}/history">History</a>
   </div>
+
+  {% if backlinks %}
+    <section class="backlinks">
+      <h2>What links here</h2>
+      <ul>
+        {% for link in backlinks %}
+          <li><a href="/w/{{ link.slug }}">{{ link.title }}</a></li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
 {% endblock %}

@@ -13,6 +13,7 @@ from fastapi import APIRouter, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app import markup
 from app import repository as repo
 from app.version import APP_VERSION, APP_VERSION_NAME
 
@@ -32,15 +33,21 @@ def _see_other(url: str) -> RedirectResponse:
     return RedirectResponse(url, status_code=status.HTTP_303_SEE_OTHER)
 
 
+def _render_body(body: str) -> str:
+    """Sanitised HTML for a page body, with wiki links resolved."""
+    return markup.render(body, repo.existing_slugs(markup.extract_links(body)))
+
+
 @router.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {"pages": repo.list_pages()})
 
 
 @router.get("/new", response_class=HTMLResponse)
-def new_page_form(request: Request):
+def new_page_form(request: Request, slug: str = "", title: str = ""):
+    """Red links arrive here with slug and title prefilled from the link text."""
     return templates.TemplateResponse(
-        request, "new.html", {"slug": "", "title": "", "body": "", "error": None}
+        request, "new.html", {"slug": slug, "title": title, "body": "", "error": None}
     )
 
 
@@ -82,7 +89,15 @@ def view_page(request: Request, slug: str):
     except repo.PageNotFound:
         raise _NO_PAGE from None
 
-    return templates.TemplateResponse(request, "page.html", {"page": page})
+    return templates.TemplateResponse(
+        request,
+        "page.html",
+        {
+            "page": page,
+            "body_html": _render_body(page["body"]),
+            "backlinks": repo.backlinks(slug),
+        },
+    )
 
 
 @router.get("/w/{slug}/edit", response_class=HTMLResponse)
@@ -160,4 +175,8 @@ def view_revision(request: Request, slug: str, revision: int):
             status_code=status.HTTP_404_NOT_FOUND, detail="no such revision"
         ) from None
 
-    return templates.TemplateResponse(request, "revision.html", {"slug": slug, "revision": row})
+    return templates.TemplateResponse(
+        request,
+        "revision.html",
+        {"slug": slug, "revision": row, "body_html": _render_body(row["body"])},
+    )
