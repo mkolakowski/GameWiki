@@ -29,9 +29,10 @@ user-authored pages; it does not redistribute third-party licensed game
 datasets). *If GameWiki ever ingests a licensed dataset — IGDB, MobyGames, a
 wiki dump — restore the license-perimeter rules before the data lands.*
 
-**Not yet built:** there is no `docs/` index page yet. The first commit that adds
-a reader-facing doc must create the index in the same commit and backfill rows
-for the existing repo-root docs, per the docs-index rule below.
+**The docs index is live** as of 0.12.0: [`docs/index.md`](docs/index.md) is the
+written index, and `DOCS` in `app/docs.py` is both the route allowlist and the
+source of the rendered index served at `/docs`. A new doc needs a row in *both*,
+plus a smoke test — see the docs-index rule below.
 
 Rules with no gate — versioning discipline, commit/push discipline, the
 changelog format, and the multiple-choice convention — apply regardless of stack.
@@ -99,9 +100,10 @@ by one.
 - Every entry must include: heading (with fun name), `**Commit summary:**`,
   `**Description:**`, and at least one categorised change list (`### Added`,
   `### Changed`, `### Fixed`, `### Removed`, `### Security`, etc.).
-- **Applies if the README carries a version badge:** update the badge in the
-  first paragraph of `README.md` to match. *(No README exists yet — if one is
-  added with a badge, this gate goes live.)*
+- **The README carries a version badge** — update it in the first paragraph of
+  `README.md` to match. There is a schema badge beside it; update that whenever
+  `SCHEMA_VERSION` moves. `scripts/check_release.py` fails on either being
+  stale, so this is enforced rather than remembered.
 - `APP_VERSION_NAME` holds the current release's Fun Name and feeds the in-UI
   version stamp. Bump it every release — it must match the top changelog entry's
   fun name and the git subject.
@@ -266,10 +268,11 @@ every pull request — keep it green. If it is ever switched to
 Two jobs run in parallel:
 
 - **Release metadata** — `scripts/check_release.py` asserts the changelog's top
-  entry matches `APP_VERSION`, its Fun Name matches `APP_VERSION_NAME`, and
-  `SCHEMA_VERSION` equals the number of migration files. With `--base <ref>` it
-  also fails a commit that didn't bump the version. Run it locally before
-  committing: `python3 scripts/check_release.py`.
+  entry matches `APP_VERSION`, its Fun Name matches `APP_VERSION_NAME`,
+  `SCHEMA_VERSION` equals the number of migration files, and the README's
+  version and schema badges match both. With `--base <ref>` it also fails a
+  commit that didn't bump the version. Run it locally before committing:
+  `python3 scripts/check_release.py`.
 - **Tests and lint** — builds the stack, waits for healthy, asserts the running
   `/health` version matches the source tree, then runs pytest and both ruff
   checks.
@@ -295,13 +298,19 @@ edit to the doc-write commit itself so no doc ever lands invisible.
 
 **In the SAME commit as the doc:**
 
-1. Add the row to the docs index / landing page (grouped by doc type: guides,
-   design plans, references, repo documentation).
-2. **Applies if docs are served through the app:** add the route/allowlist entry.
-3. **Applies if docs are served through the app:** add a per-slug smoke test
-   asserting the doc returns 200, contains a recognizable substring from its H1,
-   and renders with the nav — plus add the slug to the index-page assertion list
-   so a regression that drops the row gets caught.
+1. Add the row to [`docs/index.md`](docs/index.md), under the right doc-type
+   heading (guides, design plans, references, repo documentation).
+2. **Docs are served through the app** — add the entry to `DOCS` in
+   `app/docs.py`, which is the route allowlist and the rendered index at
+   `/docs`. A slug that isn't in `DOCS` is a 404 before any file is touched, so
+   this step is what makes the doc reachable at all.
+3. **Docs are served through the app** — add the expected H1 to `HEADINGS` in
+   `tests/api/test_docs.py`. The per-slug smoke tests (status, H1, nav) and the
+   index-row assertion are parametrised off `DOCS`, so they pick the new doc up
+   automatically; `test_every_allowlisted_doc_has_an_expected_heading` fails if
+   you add to `DOCS` and forget the heading.
+4. If the doc is at the repo root rather than under `docs/`, add it to the
+   `COPY` line in the `Dockerfile` — it has to be in the image to be served.
 
 **Status text for new entries.** Use consistent vocabulary in the index's Status
 column — `✅ shipped`, `🟠 partial`, `⚪ proposed`, `⚪ design only` — and update

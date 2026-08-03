@@ -329,6 +329,21 @@ a {
     white-space: nowrap;
 }
 
+/* --- docs --------------------------------------------------------------- */
+
+.doc-group {
+    margin: 36px 0 8px;
+    font-size: 16px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+/* Repo docs are far wider than a wiki page — tables and code blocks need it. */
+.doc .container {
+    max-width: 940px;
+}
+
 /* --- search ------------------------------------------------------------ */
 
 .search-form {

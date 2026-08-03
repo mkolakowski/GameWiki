@@ -5,10 +5,10 @@ needs the version (health endpoint, in-UI stamp, image label) imports it from
 here. See CLAUDE.md for the bump rules.
 """
 
-APP_VERSION = "0.11.0"
+APP_VERSION = "0.12.0"
 """Semver. Bumped on every commit — PATCH by default."""
 
-APP_VERSION_NAME = "Belt And Braces"
+APP_VERSION_NAME = "The Front Desk"
 """Fun Name for the current release. Must match the top CHANGELOG entry and
 the git commit subject. Feeds the version stamp in the page footer."""
 

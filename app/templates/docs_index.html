@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Documentation &mdash; GameWiki{% endblock %}
+
+{% block body_class %}doc{% endblock %}
+
+{% block content %}
+  <h1>Documentation</h1>
+  <p class="meta">
+    Every reader-facing document in this repo. A doc that isn&rsquo;t listed here
+    isn&rsquo;t reachable &mdash; see the docs-index rule in
+    <a href="/docs/guidelines">the project guidelines</a>.
+  </p>
+
+  {% for group, docs in groups.items() %}
+    <h2 class="doc-group">{{ group }}</h2>
+    <table class="admin-table">
+      <thead>
+        <tr><th>Document</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for doc in docs %}
+          <tr>
+            <td>
+              <a href="/docs/{{ doc.slug }}">{{ doc.title }}</a>
+              <div class="row-meta">{{ doc.summary }}</div>
+            </td>
+            <td class="row-meta">{{ doc.status }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endfor %}
+{% endblock %}

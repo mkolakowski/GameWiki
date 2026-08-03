@@ -13,6 +13,112 @@ and the git commit subject.
 
 ---
 
+## [0.12.0] - 2026-08-03 — "The Front Desk"
+
+**Commit summary:** add a README and a documentation index, served through the
+app at `/docs`, and make the README's version badge a CI-enforced rule.
+
+**Description:** Twelve releases in, the repo had no README — anyone finding it
+had a changelog, a guidelines file written for contributors, and no front door.
+CLAUDE.md's docs-index rule had also never activated, since it was gated on a
+first reader-facing doc that hadn't landed. Both close here. No schema change;
+`SCHEMA_VERSION` stays at `7`.
+
+**The index is served, not just written.** `docs/index.md` is the written
+index, and `DOCS` in `app/docs.py` is both the route allowlist and the source
+of the rendered index at `/docs`. Leaving the index as a markdown file on disk
+would have satisfied the rule's letter and missed its point — a file in a
+directory is barely more findable than the files it lists.
+
+**Slugs are an allowlist, never a path.** `DOCS` maps a fixed slug to a fixed
+repo-relative path, and an unknown slug 404s before any filesystem access.
+Nothing user-supplied reaches `Path`, so `..` and absolute paths have no route
+in; five traversal shapes are asserted rather than argued.
+
+### Two rendering problems that only show up on documents
+
+Repo docs go through `markup.render_document`, a separate path from wiki pages,
+because the page renderer corrupts them in two specific ways:
+
+- **`[[wiki link]]` resolution runs over the raw source before markdown
+  parsing**, so it rewrites the syntax *inside a code span* — and CHANGELOG.md
+  documents that syntax in backticks. Rendered through the page path, this very
+  file's `` `[[Page Title]]` `` became a red link. Wiki links are a
+  page-authoring feature; a document has no business gaining them.
+- **The commonmark preset has no tables**, and the guidelines file is mostly
+  tables. Documents render on a `gfm-like` instance instead.
+
+Both were caught by probing before the code was written, and both are now
+regression tests.
+
+### FastAPI was already using /docs
+
+`GET /docs` returned Swagger UI — FastAPI mounts it there by default, and it is
+registered before any router, so it silently won. The interactive API docs
+moved to `/api-docs` and `/api-redoc` rather than the documentation index
+moving, since `/docs` is the more natural home for human documentation on a
+wiki. This was found by the new tests, which is the argument for writing them.
+
+**The version badge is enforced, not remembered.** CLAUDE.md's changelog rule
+has always gated on "if the README carries a version badge" — adding one turns
+a dormant instruction into a live obligation. `scripts/check_release.py` now
+fails a stale version or schema badge, so the gate is checked by CI rather than
+by whoever reviews the diff. Verified by mutating the badge to `0.9.9` and
+watching the checker fail.
+
+Verified end to end: `/health` reports `0.12.0`, `pytest -q` passes 186 tests
+(up from 164), ruff clean. Probed by hand: the index lists all three docs with
+their status, the guidelines render as real tables, the changelog's wiki-link
+examples survive intact, the README's relative links are rewritten to `/docs/`
+slugs, a traversal attempt 404s, and Swagger still answers at `/api-docs`.
+
+### Added
+
+- `README.md` — what GameWiki is, quickstart, a module map, the two invariants
+  worth knowing before changing anything, and the security posture. Carries
+  version and schema badges.
+- `docs/index.md` — the written index, grouped by doc type, with a procedure
+  for adding a document and the fixed status vocabulary.
+- `app/docs.py` — `GET /docs` and `GET /docs/{slug}`, public, with the `DOCS`
+  allowlist and rewriting of relative inter-doc links to their slugs.
+- `app/templates/docs_index.html`, `app/templates/doc.html`, a Docs link in the
+  nav, and `.doc-group` styling with a wider container for tables.
+- `markup.render_document()` — `gfm-like`, no wiki-link resolution, still
+  sanitised by nh3.
+- README badge checks in `scripts/check_release.py`.
+- `tests/api/test_docs.py` — 22 tests, parametrised off `DOCS` so a new doc is
+  covered automatically: per-slug status/H1/nav, the index row for each doc,
+  public access, five traversal shapes, the OpenAPI UI having moved, tables
+  rendering, wiki-link syntax surviving, relative links rewritten, and the
+  badge matching the running version.
+
+### Changed
+
+- `app/version.py`: `APP_VERSION` `0.11.0` → `0.12.0`, `APP_VERSION_NAME` →
+  `"The Front Desk"`. `SCHEMA_VERSION` unchanged at `7`.
+- **Breaking for anyone using the interactive API docs:** Swagger UI moved from
+  `/docs` to `/api-docs`, and ReDoc from `/redoc` to `/api-redoc`.
+  `/openapi.json` is unchanged.
+- `Dockerfile` copies the repo-root docs and `docs/` into the image — they have
+  to be present to be served.
+- `CLAUDE.md`: the docs index is recorded as live with the four steps a new doc
+  needs; the README-badge gate is no longer conditional; the release-metadata
+  paragraph names the badge check.
+
+### Known gaps
+
+- **The docs are read from disk on every request** — no caching. They are three
+  small files, but this would want fixing before the set grows.
+- No guides or design plans yet; an operator guide covering real Google,
+  backups, and restore is the obvious first one.
+- The index is maintained in two places — `docs/index.md` and `DOCS` — and
+  nothing fails if a row is added to one and not the other. The smoke tests
+  catch a `DOCS` entry with no index *link*, but not a stale table row.
+- Docs render at the same width for every document, so the guidelines file's
+  wider tables still scroll horizontally on a phone.
+
+---
+
 ## [0.11.0] - 2026-08-03 — "Belt And Braces"
 
 **Commit summary:** add CSRF tokens to the edit, create, and role-change forms,

@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import admin, auth, pages, web
+from app import admin, auth, docs, pages, web
 from app.db import pool, run_migrations
 from app.version import APP_VERSION, APP_VERSION_NAME, SCHEMA_VERSION
 
@@ -31,7 +31,17 @@ async def lifespan(_: FastAPI):
     pool.close()
 
 
-app = FastAPI(title="GameWiki", version=APP_VERSION, lifespan=lifespan)
+# FastAPI mounts its interactive API docs at /docs by default, which collides
+# with the repo documentation index — and silently wins, since it is registered
+# before any router. /docs is the more natural home for human documentation on
+# a wiki, so the OpenAPI UIs move rather than the docs index.
+app = FastAPI(
+    title="GameWiki",
+    version=APP_VERSION,
+    lifespan=lifespan,
+    docs_url="/api-docs",
+    redoc_url="/api-redoc",
+)
 
 app.add_middleware(
     SessionMiddleware,
@@ -47,6 +57,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(auth.router)
 app.include_router(pages.router)
 app.include_router(admin.router)
+app.include_router(docs.router)
 app.include_router(web.router)
 
 

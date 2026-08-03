@@ -14,6 +14,11 @@ COPY app ./app
 COPY tests ./tests
 COPY devtools ./devtools
 
+# Reader-facing docs are served at /docs, so they have to be in the image.
+# app/docs.py reads them by allowlisted slug — see DOCS there.
+COPY README.md CHANGELOG.md CLAUDE.md ./
+COPY docs ./docs
+
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

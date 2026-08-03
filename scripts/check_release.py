@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Assert the release metadata is internally consistent.
 
-CLAUDE.md states four rules that are easy to forget and invisible in review:
+CLAUDE.md states five rules that are easy to forget and invisible in review:
 every commit bumps the version, the changelog's top entry matches it, the Fun
-Name matches everywhere, and SCHEMA_VERSION equals the migration count. This
-checks all four so CI can fail on them instead of a reader noticing later.
+Name matches everywhere, SCHEMA_VERSION equals the migration count, and the
+README's version badge tracks APP_VERSION. This checks all five so CI can fail
+on them instead of a reader noticing later.
 
     python3 scripts/check_release.py              # consistency only
     python3 scripts/check_release.py --base main  # also require a bump vs main
@@ -20,6 +21,13 @@ ROOT = Path(__file__).resolve().parent.parent
 VERSION_FILE = ROOT / "app" / "version.py"
 CHANGELOG = ROOT / "CHANGELOG.md"
 MIGRATIONS = ROOT / "app" / "migrations"
+README = ROOT / "README.md"
+
+# The README's version badge. CLAUDE.md's changelog rule gates on the badge
+# existing, so adding one turned an unenforced instruction into a real
+# obligation — this is what keeps it honest.
+BADGE_RE = re.compile(r"badge/version-(?P<version>\d+\.\d+\.\d+)-")
+SCHEMA_BADGE_RE = re.compile(r"badge/schema-(?P<schema>\d+)-")
 
 ENTRY_RE = re.compile(
     r'^## \[(?P<version>\d+\.\d+\.\d+)\] - (?P<date>\d{4}-\d{2}-\d{2}) [—-] "(?P<name>[^"]+)"',
@@ -91,6 +99,24 @@ def main() -> int:
             f"SCHEMA_VERSION is {schema_version} but there are {migration_count} "
             "migration(s) — bump it by +1 for every migration added"
         )
+
+    if README.exists():
+        readme = README.read_text()
+        badge = BADGE_RE.search(readme)
+        if badge is None:
+            failures.append("README.md has no version badge — see the changelog rule")
+        elif badge.group("version") != app_version:
+            failures.append(
+                f"README badge says {badge.group('version')} but APP_VERSION is "
+                f"{app_version} — the badge is part of the bump"
+            )
+
+        schema_badge = SCHEMA_BADGE_RE.search(readme)
+        if schema_badge is not None and int(schema_badge.group("schema")) != schema_version:
+            failures.append(
+                f"README schema badge says {schema_badge.group('schema')} but "
+                f"SCHEMA_VERSION is {schema_version}"
+            )
 
     if args.base:
         base_version = version_at(args.base)

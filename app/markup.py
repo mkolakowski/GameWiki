@@ -82,6 +82,28 @@ def render(body: str, existing: set[str]) -> str:
     return nh3.clean(_MD.render(resolve_wiki_links(body, existing)))
 
 
+# Repo documentation renders on a different path from wiki pages, for two
+# reasons that both bite in practice:
+#
+# - No `[[link]]` resolution. `resolve_wiki_links` runs over the raw source
+#   before markdown parsing, so it rewrites the syntax even inside a code
+#   span — and CHANGELOG.md documents that syntax in backticks. Wiki links
+#   are a page-authoring feature; a doc has no business gaining them.
+# - Tables. The commonmark preset has none, and the guidelines file is mostly
+#   tables. `gfm-like` adds them (and strikethrough); linkify stays off to
+#   match the page renderer.
+#
+# Docs are repo files rather than user input, so nh3 has nothing to do here —
+# it stays because "trusted" is a property of today's file list, not of this
+# function.
+_MD_DOC = MarkdownIt("gfm-like", {"html": False, "linkify": False})
+
+
+def render_document(text: str) -> str:
+    """Render a repo document to sanitised HTML."""
+    return nh3.clean(_MD_DOC.render(text))
+
+
 # Sentinels Postgres wraps around search hits in ts_headline output. Control
 # characters are used deliberately: asking ts_headline for `<mark>` directly
 # would mean receiving raw HTML mixed into a user-authored body with no way

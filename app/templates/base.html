@@ -6,7 +6,7 @@
   <title>{% block title %}GameWiki{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='/base.css') }}">
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   <header class="nav">
     <a class="nav-brand" href="/">GameWiki</a>
     <nav>
@@ -24,6 +24,7 @@
       {% else %}
         <a href="/auth/login?next={{ request.url.path|urlencode }}">Sign in with Google</a>
       {% endif %}
+      <a href="/docs">Docs</a>
     </nav>
   </header>
 
