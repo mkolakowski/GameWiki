@@ -5,12 +5,12 @@ needs the version (health endpoint, in-UI stamp, image label) imports it from
 here. See CLAUDE.md for the bump rules.
 """
 
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 """Semver. Bumped on every commit — PATCH by default."""
 
-APP_VERSION_NAME = "Nothing Is Lost"
+APP_VERSION_NAME = "The Reading Room"
 """Fun Name for the current release. Must match the top CHANGELOG entry and
-the git commit subject."""
+the git commit subject. Feeds the version stamp in the page footer."""
 
 SCHEMA_VERSION = 2
 """Incremented by +1 for every DB migration added. Moves independently of

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}GameWiki{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/base.css') }}">
+</head>
+<body>
+  <header class="nav">
+    <a class="nav-brand" href="/">GameWiki</a>
+    <nav>
+      <a href="/">All pages</a>
+      <a href="/new">New page</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    GameWiki {{ app_version }} &mdash; &ldquo;{{ app_version_name }}&rdquo;
+  </footer>
+</body>
+</html>

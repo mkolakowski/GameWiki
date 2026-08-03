@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Editing {{ title }} &mdash; GameWiki{% endblock %}
+
+{% block content %}
+  <h1>Editing {{ slug }}</h1>
+  <p class="meta">Editing from revision {{ revision }}.</p>
+
+  {% if conflict %}
+    <p class="banner">
+      Someone else saved this page while you were editing &mdash; it moved from
+      revision {{ conflict.expected }} to {{ conflict.current }}. Your text is
+      below, unsaved. Saving again will apply it on top of their change.
+    </p>
+  {% endif %}
+
+  <form method="post" action="/w/{{ slug }}/edit">
+    <input type="hidden" name="revision" value="{{ revision }}">
+
+    <div class="field">
+      <label for="title">Title</label>
+      <input id="title" name="title" value="{{ title }}" maxlength="300" required>
+    </div>
+
+    <div class="field">
+      <label for="body">Body</label>
+      <textarea id="body" name="body">{{ body }}</textarea>
+      <p class="hint">Plain text. Line breaks are preserved.</p>
+    </div>
+
+    <div class="actions">
+      <button class="button--primary" type="submit">Save</button>
+      <a class="button" href="/w/{{ slug }}">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

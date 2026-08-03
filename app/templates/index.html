@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}All pages &mdash; GameWiki{% endblock %}
+
+{% block content %}
+  <h1>All pages</h1>
+  <p class="meta">{{ pages|length }} page{{ '' if pages|length == 1 else 's' }}</p>
+
+  {% if pages %}
+    <ul class="page-list">
+      {% for page in pages %}
+        <li>
+          <a href="/w/{{ page.slug }}">
+            <span>{{ page.title }}</span>
+            <span class="row-meta">rev {{ page.revision }} &middot; {{ page.updated_at.strftime('%Y-%m-%d') }}</span>
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty">No pages yet.</p>
+  {% endif %}
+
+  <div class="actions">
+    <a class="button button--primary" href="/new">New page</a>
+  </div>
+{% endblock %}

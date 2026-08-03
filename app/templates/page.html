@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title }} &mdash; GameWiki{% endblock %}
+
+{% block content %}
+  <h1>{{ page.title }}</h1>
+  <p class="meta">
+    Revision {{ page.revision }} &middot; updated {{ page.updated_at.strftime('%Y-%m-%d %H:%M') }} UTC
+  </p>
+
+  {% if page.body %}
+    <div class="prose">{{ page.body }}</div>
+  {% else %}
+    <p class="empty">This page is empty.</p>
+  {% endif %}
+
+  <div class="actions">
+    <a class="button button--primary" href="/w/{{ page.slug }}/edit">Edit</a>
+    <a class="button" href="/w/{{ page.slug }}/history">History</a>
+  </div>
+{% endblock %}

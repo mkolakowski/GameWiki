@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}History of {{ page.title }} &mdash; GameWiki{% endblock %}
+
+{% block content %}
+  <h1>History</h1>
+  <p class="meta">
+    <a href="/w/{{ page.slug }}">{{ page.title }}</a> &middot;
+    {{ revisions|length }} revision{{ '' if revisions|length == 1 else 's' }}, newest first
+  </p>
+
+  <ul class="page-list">
+    {% for revision in revisions %}
+      <li>
+        <a href="/w/{{ page.slug }}/revisions/{{ revision.revision }}">
+          <span>rev {{ revision.revision }} &mdash; {{ revision.title }}</span>
+          <span class="row-meta">{{ revision.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+{% endblock %}

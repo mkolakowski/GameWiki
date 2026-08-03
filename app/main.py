@@ -3,8 +3,9 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
-from app import pages
+from app import pages, web
 from app.db import pool, run_migrations
 from app.version import APP_VERSION, APP_VERSION_NAME, SCHEMA_VERSION
 
@@ -25,7 +26,9 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="GameWiki", version=APP_VERSION, lifespan=lifespan)
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(pages.router)
+app.include_router(web.router)
 
 
 @app.get("/health")

@@ -13,6 +13,83 @@ and the git commit subject.
 
 ---
 
+## [0.5.0] - 2026-08-03 — "The Reading Room"
+
+**Commit summary:** add the server-rendered browser UI — page list, page view,
+history, and an edit form with conflict handling.
+
+**Description:** GameWiki is usable without curl. Jinja templates and a base
+stylesheet render the wiki under `/w/`, kept clear of the API's `/pages/`
+namespace so the two never collide.
+
+The edit form carries the revision it started from in a hidden field, which
+becomes the optimistic-concurrency check on save — the form equivalent of
+`If-Match`. **A conflict re-renders the form with the editor's draft intact**
+rather than discarding it, shows what happened, and advances the hidden field
+to the current revision so a deliberate re-save can land. Losing an editor's
+typing to a 409 page would have made the concurrency check worse than not
+having one.
+
+**Scope note:** the approved sketch listed four routes. Creating a page was not
+among them, which would have left the UI unable to add content — so `GET`/`POST
+/new` are included, along with `/w/{slug}/history` and
+`/w/{slug}/revisions/{n}`, since "page view with history" needs somewhere for
+the history link to go.
+
+To keep the HTML and JSON surfaces from duplicating SQL, reads and writes moved
+into a new `app/repository.py` speaking in domain errors. `app/pages.py` is now
+purely the HTTP contract over it — same endpoints, same responses, no behaviour
+change.
+
+Page bodies are **plain text**, rendered with `white-space: pre-wrap`. No
+markdown, no wiki links, no search, and no authentication — anyone who can
+reach the app can edit any page.
+
+Verified end to end: rebuild reaches healthy, `/health` reports `0.5.0` /
+"The Reading Room", `pytest -q` passes 34 tests (up from 19), ruff clean.
+Rendered a real page through the form and confirmed the markup, the footer
+version stamp, and that user-supplied `<script>` in a title and `<img onerror>`
+in a body come back HTML-escaped. **Not** verified in a real browser — no
+browser is available on this machine, so layout and the touch targets are
+asserted in CSS and smoke tests rather than seen.
+
+### Added
+
+- `app/web.py` — the HTML routes:
+  - `GET /` → page list, ordered by title, with a New page action.
+  - `GET /new`, `POST /new` → create a page; 400 re-renders with the draft kept
+    on a malformed slug, a blank title, or a duplicate slug.
+  - `GET /w/{slug}` → rendered page with Edit and History actions; 404 unknown.
+  - `GET /w/{slug}/edit` → form with the revision in a hidden field.
+  - `POST /w/{slug}/edit` → 303 redirect on success; **409** re-render with the
+    draft preserved when the page moved on.
+  - `GET /w/{slug}/history` → revisions newest first.
+  - `GET /w/{slug}/revisions/{n}` → read-only historical version.
+- `app/templates/` — `base.html` (nav, container, footer version stamp),
+  `index.html`, `page.html`, `edit.html`, `new.html`, `history.html`,
+  `revision.html`. Autoescaping is on, so page content can't inject markup.
+- `app/static/base.css` — the base stylesheet. Global `button` rule sets
+  `min-height: 44px` with `inline-flex` centring; `input` / `select` set
+  `min-height: 44px`; nav links and list rows are padded to the same baseline.
+  These are the rules CLAUDE.md names as load-bearing.
+- `app/repository.py` — shared data access raising `PageNotFound`,
+  `RevisionNotFound`, `SlugTaken`, and `RevisionConflict`.
+- `tests/api/test_web.py` — 15 smoke and contract tests: every route returns
+  200 with its heading and the nav, plus the 404s, the conflict re-render, the
+  duplicate-slug and malformed-slug rejections, and an assertion that the 44px
+  rules are still served in the stylesheet.
+- Dependencies: `jinja2`, `python-multipart`.
+- `/static` mount on the app.
+
+### Changed
+
+- `app/version.py`: `APP_VERSION` `0.4.0` → `0.5.0`, `APP_VERSION_NAME` →
+  `"The Reading Room"`. The name now genuinely feeds an in-UI version stamp.
+- `app/pages.py`: SQL moved out to `app/repository.py`; the module now maps
+  domain errors to status codes. No change to any endpoint's behaviour.
+
+---
+
 ## [0.4.0] - 2026-08-03 — "Nothing Is Lost"
 
 **Commit summary:** add revision history and optimistic concurrency on page
