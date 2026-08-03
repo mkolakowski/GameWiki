@@ -76,7 +76,16 @@ _NO_PAGE = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no such 
 
 
 @router.get("", response_model=list[PageSummary])
-def list_pages() -> list[dict]:
+def list_pages(q: str = "") -> list[dict]:
+    """Every page by title, or the matches for `q` ranked best-first.
+
+    Search lives here rather than at `/pages/search` on purpose: that path
+    would shadow a page whose slug happens to be `search`, and the shape being
+    returned is a page list either way. The ranked snippet is a presentation
+    concern and stays on the HTML surface at `/search`.
+    """
+    if q.strip():
+        return repo.search_pages(q)
     return repo.list_pages()
 
 

@@ -57,6 +57,24 @@ def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {"pages": repo.list_pages()})
 
 
+@router.get("/search", response_class=HTMLResponse)
+def search(request: Request, q: str = ""):
+    """Full-text results, best match first.
+
+    A query that finds nothing offers to create the page instead — the same
+    convention as a red link, where a miss doubles as an invitation to write.
+    """
+    results = [
+        dict(row, snippet_html=markup.highlight_snippet(row["snippet"]))
+        for row in repo.search_pages(q)
+    ]
+    return templates.TemplateResponse(
+        request,
+        "search.html",
+        {"q": q, "results": results, "create_slug": markup.slugify(q)},
+    )
+
+
 @router.get("/new", response_class=HTMLResponse)
 def new_page_form(request: Request, slug: str = "", title: str = ""):
     """Red links arrive here with slug and title prefilled from the link text."""

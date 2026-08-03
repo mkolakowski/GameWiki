@@ -214,6 +214,45 @@ def list_pages() -> list[dict]:
         ).fetchall()
 
 
+SEARCH_LIMIT = 50
+
+# ts_headline options. The sentinels are the ones markup.highlight_snippet
+# swaps for <mark> after escaping — see the note there on why they aren't
+# `<mark>` already.
+_HEADLINE_OPTS = (
+    f"StartSel={markup.HL_START}, StopSel={markup.HL_STOP},"
+    " MaxWords=24, MinWords=8, MaxFragments=2, FragmentDelimiter= … "
+)
+
+
+def search_pages(query: str, limit: int = SEARCH_LIMIT) -> list[dict]:
+    """Rank pages against a user-typed query.
+
+    `websearch_to_tsquery` is what makes this safe to point at raw input: it
+    accepts quoted phrases, `or`, and `-exclusion`, and it degrades punctuation
+    soup to an empty query rather than raising the way `to_tsquery` would. An
+    empty query matches nothing, so a search for `&&&` is zero results and not
+    a 500.
+
+    A query that is only stop words ("the", "a") is likewise empty and finds
+    nothing, which is the standard full-text tradeoff rather than a bug.
+    """
+    if not query.strip():
+        return []
+
+    with pool.connection() as conn:
+        return conn.execute(
+            "WITH q AS (SELECT websearch_to_tsquery('english', %s) AS query)"
+            " SELECT p.slug, p.title, p.revision, p.updated_at,"
+            "        ts_headline('english', p.body, q.query, %s) AS snippet,"
+            "        ts_rank_cd(p.search_vector, q.query) AS rank"
+            " FROM pages p, q"
+            " WHERE p.search_vector @@ q.query"
+            " ORDER BY rank DESC, p.title LIMIT %s",
+            (query, _HEADLINE_OPTS, limit),
+        ).fetchall()
+
+
 def get_page(slug: str) -> dict:
     with pool.connection() as conn:
         page = conn.execute(

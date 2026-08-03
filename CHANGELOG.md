@@ -13,6 +13,102 @@ and the git commit subject.
 
 ---
 
+## [0.10.0] - 2026-08-03 — "The Card Catalogue"
+
+**Commit summary:** add Postgres full-text search over page titles and bodies,
+with a ranked results page and highlighted snippets.
+
+**Description:** The oldest open gap — noted as missing since 0.6.0. Until now
+the only way to find a page was to read the full list, ordered by title, which
+stops being a way to find anything somewhere around the thirtieth game.
+`SCHEMA_VERSION` goes to `7`.
+
+`search_vector` is a **generated** column, not a trigger-maintained one. There
+is nothing for the repository layer to remember on write and no way for the
+index to drift out of step with the row it describes, and `ALTER TABLE`
+backfills every existing page on its own — so this migration has no backfill
+step at all, unlike 003. Titles are weighted `A` and bodies `B`, so a page
+*named* for the term outranks one that mentions it in passing.
+
+**`websearch_to_tsquery` is what makes this safe to point at raw input.** It
+takes quoted phrases, `or`, and `-exclusions`, and it degrades punctuation soup
+to an empty query instead of raising the way `to_tsquery` does — so a search
+for `&&&` is zero results rather than a 500. A query of pure stop words is
+likewise empty and finds nothing; that is the standard full-text tradeoff, not
+a bug.
+
+**Snippets were the whole risk surface of this bump.** A `ts_headline` excerpt
+is a slice of a user-authored body heading for the browser as HTML, which is
+the same exposure the markdown pipeline carries — except markdown at least
+arrives as text. Asking `ts_headline` for `<mark>` directly would mean
+receiving that markup already mixed into hostile input with no way left to tell
+the two apart. So Postgres wraps hits in **control-character sentinels**, the
+excerpt is escaped in full, and only then are the sentinels swapped for
+`<mark>`: the only markup that can reach the page is markup the app put there.
+nh3 then runs over the result against a `mark`-only allowlist, which finds
+nothing to strip given the escaping — but a body containing a literal sentinel
+would otherwise emit an unbalanced tag, and nh3 closes it. Verified against
+seven hostile snippets and a crafted query echoed back into the search box.
+
+**Search lives on `GET /pages?q=` rather than `GET /pages/search`**, which
+would shadow a page whose slug happens to be `search` — the shape returned is a
+page list either way. The ranked snippet is a presentation concern and stays on
+the HTML surface.
+
+A search that finds nothing offers to create the page, the same convention as a
+red link, where a miss doubles as an invitation to write.
+
+**A failing test caught a bad test, not a bad feature.** The ranking assertion
+seeded both fixture pages with the search term in their *titles*, so both drew
+weight `A` and the tie broke alphabetically. The fixture was wrong; the
+weighting was doing exactly what the migration asks for.
+
+Verified end to end: migration 007 applies and backfills, `/health` reports
+`0.10.0` / `schema_version: 7`, `pytest -q` passes 147 tests (up from 119),
+ruff clean. Probed by hand: a two-word query returns ranked results with both
+terms marked, `/pages?q=` returns the ranked JSON list, an unmatched query
+offers the create link, and the nav box renders on every page. **Still not seen
+in a real browser** — none available here — so the results layout and the
+44px-baseline nav box are asserted in CSS and tests rather than looked at.
+
+### Added
+
+- `app/migrations/007_add_page_search.sql` — a generated `pages.search_vector`
+  weighting title over body, plus a GIN index.
+- `GET /search?q=` — ranked results with highlighted snippets, a search form,
+  and a create invitation on zero matches. Public, like every other read.
+- `?q=` on `GET /pages` — the same ranking as JSON. Omitting it returns the
+  full listing exactly as before.
+- `repo.search_pages()` and `markup.highlight_snippet()`.
+- A search box in the nav on every page, and `.results` / `.snippet` /
+  `mark` styling. The box keeps the 44px baseline but is width-constrained,
+  since the global `input` rule's `width: 100%` would otherwise break the nav.
+- `tests/api/test_search.py` — 16 tests: body and title matching, title
+  weighting, the JSON shape, the untouched unfiltered listing, a blank query
+  falling through, an edit reflected without any write-side upkeep, the
+  zero-match invitation, punctuation soup, phrase search, anonymous access, a
+  hostile body, a hostile title, and a crafted query.
+- 12 tests in `tests/unit/test_markup.py` for the snippet sanitiser, including
+  the `&`-round-trip, an unbalanced sentinel, and seven hostile snippets.
+
+### Changed
+
+- `app/version.py`: `APP_VERSION` `0.9.0` → `0.10.0`, `APP_VERSION_NAME` →
+  `"The Card Catalogue"`, `SCHEMA_VERSION` `6` → `7`.
+- `GET /pages` accepts an optional `q`. Additive — no existing client changes.
+
+### Known gaps
+
+- **Search covers current pages only**, not revision history, so text that was
+  deleted from a page is unfindable even though it is still stored.
+- The `english` text-search config is hardcoded, so stemming is English-only.
+- No pagination — results cap at 50 with no indication that more were dropped.
+- Non-ASCII still folds the way `slugify` does, so the create link offered for
+  an unmatched `Pokémon` targets `pok-mon`.
+- Search is unranked by recency or popularity; `ts_rank_cd` alone decides.
+
+---
+
 ## [0.9.0] - 2026-08-03 — "The Key Ring"
 
 **Commit summary:** add the admin accounts screen, an `ADMIN_EMAILS` bootstrap,

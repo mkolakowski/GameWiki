@@ -108,3 +108,54 @@ def test_a_javascript_link_is_not_an_anchor_at_all():
     html = markup.render("[click me](javascript:alert1)", set())
 
     assert "<a " not in html
+
+
+# --- search snippet highlighting ---------------------------------------------
+#
+# ts_headline hands back a slice of a user-authored body with sentinels around
+# the hits. Everything below asserts that the only markup which survives into
+# the results page is the <mark> this module puts there itself.
+
+S, E = markup.HL_START, markup.HL_STOP
+
+
+def test_highlight_wraps_hits_in_mark():
+    assert markup.highlight_snippet(f"a {S}hit{E} here") == "a <mark>hit</mark> here"
+
+
+def test_highlight_escapes_markup_around_the_hit():
+    snippet = markup.highlight_snippet(f"<b>bold</b> and {S}hit{E}")
+
+    assert snippet == "&lt;b&gt;bold&lt;/b&gt; and <mark>hit</mark>"
+
+
+def test_highlight_leaves_plain_text_alone():
+    assert markup.highlight_snippet("nothing matched here") == "nothing matched here"
+
+
+def test_highlight_round_trips_an_ampersand_once():
+    """Escape-then-sanitise must not double-encode: `&` stays `&amp;`."""
+    assert markup.highlight_snippet("Command & Conquer") == "Command &amp; Conquer"
+
+
+def test_highlight_closes_a_stray_sentinel():
+    """A body containing a literal sentinel must not emit an unbalanced tag."""
+    result = markup.highlight_snippet(f"stray {S} with no close")
+
+    assert result.count("<mark>") == result.count("</mark>") == 1
+
+
+HOSTILE_SNIPPETS = [
+    "<script>alert(1)</script>",
+    f"{S}<script>alert(1)</script>{E}",
+    "<img src=x onerror=alert(1)>",
+    '<a href="javascript:alert(1)">click</a>',
+    f"</mark><img src=x onerror=alert(1)>{S}hit{E}",
+    "<iframe src=//evil></iframe>",
+    f"{S}<style>body{{display:none}}</style>{E}",
+]
+
+
+@pytest.mark.parametrize("snippet", HOSTILE_SNIPPETS)
+def test_hostile_snippet_renders_no_dangerous_markup(snippet, assert_safe_html):
+    assert_safe_html(markup.highlight_snippet(snippet))

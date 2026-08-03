@@ -15,6 +15,7 @@ The escaping tests in `tests/unit/test_markup.py` are load-bearing — treat a
 failure there as a security regression, not a formatting nit.
 """
 
+import html
 import re
 from urllib.parse import urlencode
 
@@ -79,3 +80,27 @@ def resolve_wiki_links(body: str, existing: set[str]) -> str:
 def render(body: str, existing: set[str]) -> str:
     """Render a page body to sanitised HTML."""
     return nh3.clean(_MD.render(resolve_wiki_links(body, existing)))
+
+
+# Sentinels Postgres wraps around search hits in ts_headline output. Control
+# characters are used deliberately: asking ts_headline for `<mark>` directly
+# would mean receiving raw HTML mixed into a user-authored body with no way
+# left to tell the two apart. These survive the round trip and are replaced
+# only after the text has been escaped.
+HL_START = "\x02"
+HL_STOP = "\x03"
+
+
+def highlight_snippet(snippet: str) -> str:
+    """Turn a ts_headline excerpt into safe HTML with the hits marked.
+
+    The excerpt is a slice of a user-authored body, so it is escaped in full
+    first and the sentinels are swapped for `<mark>` afterwards — the only
+    markup that can reach the browser is markup this function put there.
+
+    nh3 then runs over the result against a `mark`-only allowlist. It cannot
+    find anything to strip given the escaping above, but a body containing a
+    literal sentinel would otherwise emit an unbalanced tag, and nh3 closes it.
+    """
+    marked = html.escape(snippet).replace(HL_START, "<mark>").replace(HL_STOP, "</mark>")
+    return nh3.clean(marked, tags={"mark"}, attributes={})

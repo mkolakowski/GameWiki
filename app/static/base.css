@@ -142,6 +142,26 @@ textarea:focus {
     letter-spacing: 0.01em;
 }
 
+/* The global input rule sets width: 100%, which would blow the nav apart, so
+ * the search box is sized explicitly. min-height stays at the 44px baseline. */
+.nav-search {
+    display: flex;
+    align-items: center;
+    margin: 0 4px;
+}
+
+.nav-search input {
+    width: 180px;
+    padding: 6px 12px;
+    font-size: 14px;
+}
+
+@media (max-width: 560px) {
+    .nav-search input {
+        width: 120px;
+    }
+}
+
 .container {
     max-width: 780px;
     margin: 0 auto;
@@ -307,6 +327,62 @@ a {
     color: var(--muted);
     font-size: 13px;
     white-space: nowrap;
+}
+
+/* --- search ------------------------------------------------------------ */
+
+.search-form {
+    display: flex;
+    gap: 12px;
+    margin: 0 0 24px;
+}
+
+.search-form button {
+    flex: none;
+}
+
+.results {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--rule);
+}
+
+.results li {
+    /* Dense result rows — the title link, snippet, and meta line together sit
+     * far above the 44px baseline, and the link itself is padded to it. */
+    padding: 16px 4px;
+    border-bottom: 1px solid var(--rule);
+}
+
+.results li > a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: 18px;
+    text-decoration: none;
+}
+
+.results li > a:hover {
+    text-decoration: underline;
+}
+
+.snippet {
+    margin: 2px 0 6px;
+    color: var(--ink);
+}
+
+.snippet mark {
+    padding: 0 2px;
+    border-radius: 3px;
+    background: #f6e4a8;
+    color: inherit;
+}
+
+.results .row-meta {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
 }
 
 .field {

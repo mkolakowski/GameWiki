@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{% if q %}{{ q }} &mdash; {% endif %}Search &mdash; GameWiki{% endblock %}
+
+{% block content %}
+  <h1>Search</h1>
+
+  <form class="search-form" action="/search" method="get" role="search">
+    <label class="visually-hidden" for="search-q">Search pages</label>
+    <input id="search-q" type="search" name="q" value="{{ q }}"
+           placeholder="Title or text&hellip;" autofocus>
+    <button type="submit">Search</button>
+  </form>
+
+  {% if not q.strip() %}
+    <p class="meta">Type a query above. Quoted &ldquo;phrases&rdquo;, <code>or</code>,
+      and <code>-exclusions</code> all work.</p>
+  {% elif results %}
+    <p class="meta">
+      {{ results|length }} result{{ '' if results|length == 1 else 's' }} for
+      &ldquo;{{ q }}&rdquo;
+    </p>
+
+    <ul class="results">
+      {% for result in results %}
+        <li>
+          <a href="/w/{{ result.slug }}">{{ result.title }}</a>
+          {# Escaped and sanitised in markup.highlight_snippet — the only tag
+             it can carry is <mark>. #}
+          <p class="snippet">{{ result.snippet_html|safe }}</p>
+          <p class="row-meta">
+            /w/{{ result.slug }} &middot; rev {{ result.revision }}
+            &middot; {{ result.updated_at.strftime('%Y-%m-%d') }}
+          </p>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty">Nothing matches &ldquo;{{ q }}&rdquo;.</p>
+
+    {% if create_slug %}
+      <div class="actions">
+        {% if user and user.role in ("editor", "admin") %}
+          <a class="button button--primary"
+             href="/new?slug={{ create_slug|urlencode }}&amp;title={{ q|urlencode }}">
+            Create this page
+          </a>
+        {% elif not user %}
+          <a class="button" href="/auth/login?next=/new">Sign in to add a page</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  {% endif %}
+{% endblock %}

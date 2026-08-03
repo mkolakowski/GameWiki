@@ -11,6 +11,11 @@
     <a class="nav-brand" href="/">GameWiki</a>
     <nav>
       <a href="/">All pages</a>
+      <form class="nav-search" action="/search" method="get" role="search">
+        <label class="visually-hidden" for="nav-q">Search pages</label>
+        <input id="nav-q" type="search" name="q" placeholder="Search&hellip;"
+               value="{{ request.query_params.get('q', '') if request.url.path == '/search' else '' }}">
+      </form>
       {% if user %}
         {% if user.role in ("editor", "admin") %}<a href="/new">New page</a>{% endif %}
         {% if user.role == "admin" %}<a href="/admin/users">Accounts</a>{% endif %}
